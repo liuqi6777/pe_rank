@@ -61,6 +61,7 @@ class ModelArguments:
     freeze_backbone: bool = field(default=False)
     tune_mlp_adapter: bool = field(default=False)
     encoder_name: Optional[str] = field(default="jinaai/jina-embeddings-v2-base-en")
+    encoder_pooling: Optional[str] = field(default="mean", metadata={"help": "mean or cls"})
     pretrain_mlp_adapter: Optional[str] = field(default=None)
     projector_type: Optional[str] = field(default='linear')
 
@@ -92,7 +93,7 @@ class TrainingArguments(transformers.TrainingArguments):
 
 @dataclass
 class LoraArguments:
-    enbale_lora: bool = False
+    lora_enable: bool = False
     lora_r: int = 8
     lora_alpha: int = 16
     lora_dropout: float = 0.05
@@ -482,7 +483,7 @@ def train(attn_implementation=None):
             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
         
     # Load Lora
-    if lora_args.enbale_lora:
+    if lora_args.lora_enable:
         lora_config = LoraConfig(
             r=lora_args.lora_r,
             lora_alpha=lora_args.lora_alpha,

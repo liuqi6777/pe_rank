@@ -65,11 +65,6 @@ def build_projector(config):
 
 # Encoder
 
-def mean_pooling(embeddings: Tensor, attention_mask: Tensor) -> Tensor:
-    return torch.sum(embeddings * attention_mask.unsqueeze(-1), dim=1) \
-        / torch.clamp(torch.sum(attention_mask, dim=1, keepdims=True), min=1e-9)
-
-
 class Encoder(nn.Module):
     def __init__(self, model_name, args):
         super().__init__()
@@ -77,8 +72,15 @@ class Encoder(nn.Module):
         self.encoder = AutoModel.from_pretrained(model_name, trust_remote_code=True)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.config = self.encoder.config
+        self.pooling = args.encoder_pooling
         
         self.encoder.requires_grad_(False)
+    
+    @staticmethod
+    @torch.no_grad()
+    def mean_pooling(embeddings: Tensor, attention_mask: Tensor) -> Tensor:
+        return torch.sum(embeddings * attention_mask.unsqueeze(-1), dim=1) \
+            / torch.clamp(torch.sum(attention_mask, dim=1, keepdims=True), min=1e-9)
     
     @torch.no_grad()
     def forward(self, texts: list[str], **kwargs: dict) -> dict[str, Tensor]:
@@ -86,7 +88,10 @@ class Encoder(nn.Module):
         for key in inputs:
             inputs[key] = inputs[key].to(self.encoder.device)
         outputs = self.encoder(**inputs)
-        return mean_pooling(outputs.last_hidden_state, inputs['attention_mask'])
+        if self.pooling == 'mean':
+            return self.mean_pooling(outputs.last_hidden_state, inputs['attention_mask'])
+        else:
+            return outputs.last_hidden_state[:, 0]
     
     def _tokenize(self, texts: list[str], **kwargs: dict) -> dict[str, Tensor]:
         tokenizer_options = {
