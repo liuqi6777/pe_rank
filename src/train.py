@@ -111,9 +111,11 @@ def rank0_print(*args):
         print(*args)
         
 
-def maybe_zero_3(param):
+def maybe_zero_3(param, ignore_status=False, name=None):
     if hasattr(param, "ds_id"):
-        assert param.ds_status == ZeroParamStatus.NOT_AVAILABLE
+        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+            if not ignore_status:
+                logging.warning(f"{name}: param.ds_status != ZeroParamStatus.NOT_AVAILABLE: {param.ds_status}")
         with zero.GatheredParameters([param]):
             param = param.data.detach().cpu().clone()
     else:
