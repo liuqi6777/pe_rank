@@ -7,9 +7,10 @@ python src/train.py \
     --data_path ./data/msmarco-100k-clean-train.jsonl \
     --encoder_name jinaai/jina-embeddings-v2-base-en \
     --projector_type mlp2x_gelu \
+    --freeze_backbone \
     --tune_mlp_adapter \
     --bf16 \
-    --output_dir ./checkpoints/pretrain-test \
+    --output_dir ./checkpoints/vicuna.jina.rankgpt100k.pretrain.deleteme \
     --num_train_epochs 1 \
     --per_device_train_batch_size 16 \
     --gradient_accumulation_steps 1 \

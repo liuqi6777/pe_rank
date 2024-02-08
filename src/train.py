@@ -80,6 +80,7 @@ class DataArguments:
 class TrainingArguments(transformers.TrainingArguments):
     cache_dir: Optional[str] = field(default=None)
     optim: str = field(default="adamw_torch")
+    remove_unused_columns: bool = field(default=False)
     model_max_length: int = field(
         default=512,
         metadata={
@@ -87,8 +88,6 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     flash_attn: bool = False
-    
-    freeze_mlp_adapter: bool = field(default=False)
 
 
 @dataclass
@@ -123,7 +122,6 @@ def maybe_zero_3(param, ignore_status=False, name=None):
         param = param.detach().cpu().clone()
     return param
 
-
 # Borrowed from peft.utils.get_peft_model_state_dict
 def get_peft_state_maybe_zero_3(named_params, bias):
     if bias == "none":
@@ -155,7 +153,6 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
         to_return = {k: t for k, t in to_return.items() if t.requires_grad}
     to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()}
     return to_return
-
 
 def get_adapter_state_maybe_zero_3(named_params, keys_to_match):
     to_return = {k: t for k, t in named_params if any(key_match in k for key_match in keys_to_match)}
@@ -218,6 +215,7 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
         trainer._save(output_dir, state_dict=cpu_state_dict)  # noqa
 
 
+# FIXME: mask placeholders
 def preprocess(
     sources,
     tokenizer: transformers.PreTrainedTokenizer,
@@ -310,12 +308,15 @@ def preprocess(
 class LazySupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, raw_data, tokenizer: transformers.PreTrainedTokenizer):
+    def __init__(self,
+                 raw_data: list[dict],
+                 tokenizer: transformers.PreTrainedTokenizer,
+                 encoder_tokenizer: transformers.PreTrainedTokenizer
+                 ):
         super(LazySupervisedDataset, self).__init__()
-        self.tokenizer = tokenizer
-
         rank0_print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
+        self.encoder_tokenizer = encoder_tokenizer
         self.raw_data = raw_data
         self.cached_data_dict = {}
 
@@ -331,17 +332,27 @@ class LazySupervisedDataset(Dataset):
             input_ids=ret["input_ids"][0],
             labels=ret["labels"][0],
             attention_mask=ret["attention_mask"][0],
-            texts=self.raw_data[i].get("texts", None)
         )
+        if "extra_texts" in self.raw_data[i]:
+            extra_text_inputs = self.encoder_tokenizer(
+                self.raw_data[i]["extra_texts"],
+                return_tensors="pt",
+                padding="max_length",
+                max_length=128,
+                truncation=True,
+            )
+            ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
         self.cached_data_dict[i] = ret
 
         return ret
-    
+
+
 @dataclass
-class DataCollatorForSupervisedDataset(object):
+class DataCollatorForSupervisedDataset:
     """Collate examples for supervised fine-tuning."""
 
     tokenizer: transformers.PreTrainedTokenizer
+    encoder_tokenizer: transformers.PreTrainedTokenizer
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         input_ids, labels = tuple([instance[key] for instance in instances]
@@ -360,15 +371,22 @@ class DataCollatorForSupervisedDataset(object):
             labels=labels,
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
         )
-
-        if 'texts' in instances[0]:
-            batch['texts'] = [instance['texts'] for instance in instances]
-
+        if instances[0].get("extra_text_input_ids", None) is not None:
+            extra_text_input_ids = [instance["extra_text_input_ids"] for instance in instances] 
+            extra_text_input_ids = torch.nn.utils.rnn.pad_sequence(
+                extra_text_input_ids,
+                batch_first=True,
+                padding_value=self.encoder_tokenizer.pad_token_id
+            )
+            batch["extra_text_input_ids"] = extra_text_input_ids
+            batch["extra_text_attention_mask"] = extra_text_input_ids.ne(self.encoder_tokenizer.pad_token_id)
         return batch
 
 
 def make_supervised_data_module(
-    tokenizer: transformers.PreTrainedTokenizer, data_args
+    tokenizer: transformers.PreTrainedTokenizer, 
+    encoder_tokenizer: transformers.PreTrainedTokenizer,
+    data_args
 ) -> Dict:
     """Make dataset and collator for supervised fine-tuning."""
     dataset_cls = LazySupervisedDataset
@@ -381,13 +399,15 @@ def make_supervised_data_module(
             train_json = [json.loads(line) for line in f]
     else:
         raise ValueError(f"Unsupported data format: {data_args.data_path}")
-    train_dataset = dataset_cls(train_json, tokenizer=tokenizer)
-    
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+    train_dataset = dataset_cls(train_json, tokenizer=tokenizer, encoder_tokenizer=encoder_tokenizer)
+
+    data_collator = DataCollatorForSupervisedDataset(
+        tokenizer=tokenizer, 
+        encoder_tokenizer=encoder_tokenizer)
 
     if data_args.eval_data_path:
         eval_json = json.load(open(data_args.eval_data_path, "r"))
-        eval_dataset = dataset_cls(eval_json, tokenizer=tokenizer)
+        eval_dataset = dataset_cls(eval_json, tokenizer=tokenizer, encoder_tokenizer=encoder_tokenizer)
     else:
         eval_dataset = None
 
@@ -470,17 +490,6 @@ def train(attn_implementation=None):
         scaling_factor = float(math.ceil(training_args.model_max_length / orig_ctx_len))
         model.config.rope_scaling = {"type": "linear", "factor": scaling_factor}
     model.config.use_cache = False
-    
-    if model_args.freeze_backbone:
-        model.model.requires_grad_(False)
-        
-    if training_args.gradient_checkpointing:
-        if hasattr(model, "enable_input_require_grads"):
-            model.enable_input_require_grads()
-        else:
-            def make_inputs_require_grad(module, input, output):
-                output.requires_grad_(True)
-            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
         
     # Load Lora
     if lora_args.lora_enable:
@@ -502,8 +511,6 @@ def train(attn_implementation=None):
             if "lm_head" in name or "embed_tokens" in name:
                 if hasattr(module, "weight"):
                     module = module.to(compute_dtype)
-    if training_args.deepspeed is not None and training_args.local_rank == 0:
-        model.print_trainable_parameters()
         
     # Load tokenizer
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -521,6 +528,11 @@ def train(attn_implementation=None):
     if model_args.encoder_name:
         model.get_model().initialize_modules(model_args)
         
+        encoder_tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_args.encoder_name,
+            cache_dir=training_args.cache_dir,
+            trust_remote_code=model_args.trust_remote_code,
+        )
         encoder = model.get_encoder()
         encoder.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
 
@@ -528,20 +540,28 @@ def train(attn_implementation=None):
         model.config.tokenizer_model_max_length = tokenizer.model_max_length
 
         model.config.tune_mlp_adapter = training_args.tune_mlp_adapter = model_args.tune_mlp_adapter
-        if model_args.tune_mlp_adapter:
+        model.config.freeze_backbone = model_args.freeze_backbone
+        if model_args.freeze_backbone:
             model.requires_grad_(False)
-            for p in model.get_model().projector.parameters():
-                p.requires_grad = True
-
-        model.config.freeze_mlp_adapter = training_args.freeze_mlp_adapter
-        if training_args.freeze_mlp_adapter:
-            for p in model.get_model().projector.parameters():
-                p.requires_grad = False
+        for p in model.get_model().projector.parameters():
+            p.requires_grad = training_args.tune_mlp_adapter
 
         model.initialize_tokenizer(tokenizer)
+        
+    if training_args.gradient_checkpointing:
+        if hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
+        else:
+            def make_inputs_require_grad(module, input, output):
+                output.requires_grad_(True)
+            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
     # Load data
-    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
+    data_module = make_supervised_data_module(
+        tokenizer=tokenizer,
+        encoder_tokenizer=encoder_tokenizer, 
+        data_args=data_args
+    )
 
     # Start trainner
     trainer = Trainer(
@@ -551,7 +571,6 @@ def train(attn_implementation=None):
         trainer.train(resume_from_checkpoint=True)
     else:
         trainer.train()
-    trainer.save_state()
 
     # Save model
     model.config.use_cache = True

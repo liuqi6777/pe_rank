@@ -27,7 +27,7 @@ from transformers.generation.utils import GenerateOutput
 
 
 PLACEHOLDER = '<PLACEHOLDER>'  # FIXME: move it to constants
-PLACEHOLDER_ID = None
+PLACEHOLDER_ID = 0
 
 
 class IdentityMap(nn.Module):
@@ -63,28 +63,22 @@ def build_projector(config):
     raise ValueError(f'Unknown projector type: {projector_type}')
 
 
-# Encoder
-
 class Encoder(nn.Module):
-    def __init__(self, model_name, args):
+    def __init__(self, model_name, config):
         super().__init__()
-
         self.encoder = AutoModel.from_pretrained(model_name, trust_remote_code=True)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.config = self.encoder.config
-        self.pooling = args.encoder_pooling
-        
-        self.encoder.requires_grad_(False)
+        self.pooling = config.encoder_pooling
+        self.requires_grad_(False)
     
     @staticmethod
     @torch.no_grad()
     def mean_pooling(embeddings: Tensor, attention_mask: Tensor) -> Tensor:
         return torch.sum(embeddings * attention_mask.unsqueeze(-1), dim=1) \
             / torch.clamp(torch.sum(attention_mask, dim=1, keepdims=True), min=1e-9)
-    
-    @torch.no_grad()
-    def forward(self, texts: list[str], **kwargs: dict) -> dict[str, Tensor]:
-        inputs = self._tokenize(texts, **kwargs)
+
+    @torch.no_grad()    
+    def forward(self, **inputs) -> dict[str, Tensor]:
         for key in inputs:
             inputs[key] = inputs[key].to(self.encoder.device)
         outputs = self.encoder(**inputs)
@@ -93,22 +87,6 @@ class Encoder(nn.Module):
         else:
             return outputs.last_hidden_state[:, 0]
     
-    def _tokenize(self, texts: list[str], **kwargs: dict) -> dict[str, Tensor]:
-        tokenizer_options = {
-            "padding": True,
-            "truncation": True,
-            "max_length": 512,
-            "return_tensors": "pt"
-        }
-        tokenizer_options.update(kwargs)
-        return self.tokenizer(texts, **tokenizer_options)
-
-
-def build_encoder(config):
-    return Encoder(config.encoder_name, config)
-    
-    
-# Full Model
 
 class ELMMetaModel:
     def __init__(self, config):
@@ -116,7 +94,7 @@ class ELMMetaModel:
         self.config = config
         
         if hasattr(config, 'encoder_name'):
-            self.encoder = build_encoder(config)
+            self.encoder = Encoder(config.encoder_name, config)
             self.projector = build_projector(config)
             
     def get_encoder(self):
@@ -130,8 +108,9 @@ class ELMMetaModel:
         pretrain_mlp_adapter = model_args.pretrain_mlp_adapter
 
         self.config.encoder_name = encoder_name
+        self.config.encoder_pooling = model_args.encoder_pooling
         if self.get_encoder() is None:
-            self.encoder = build_encoder(self.config)
+            self.encoder = Encoder(self.config.encoder_name, self.config)
 
         self.config.use_proj = True
         self.config.projector_type = getattr(model_args, 'projector_type', 'linear')
@@ -164,8 +143,8 @@ class ELMMetaForCausalLM(ABC):
     def get_projector(self):
         return self.get_model().get_projector()
     
-    def encode_texts(self, texts: list[str], **kwargs: dict) -> Tensor:
-        embeddings = self.get_encoder()(texts, **kwargs)
+    def encode_texts(self, **inputs: dict) -> Tensor:
+        embeddings = self.get_encoder()(**inputs)
         embeddings = self.get_projector()(embeddings)
         return embeddings
     
@@ -176,25 +155,28 @@ class ELMMetaForCausalLM(ABC):
         attention_mask,
         past_key_values,
         labels,
-        texts
+        **extra_texts_inputs
     ):
-        if self.get_encoder() is None or texts is None or input_ids.shape[1] == 1:
+        if self.get_encoder() is None or "extra_text_input_ids" not in extra_texts_inputs:
             return input_ids, position_ids, attention_mask, past_key_values, None, labels
+        
+        assert "extra_text_input_ids" in extra_texts_inputs and "extra_text_attention_mask" in extra_texts_inputs, extra_texts_inputs.keys()
         
         input_embeddings = []
         
-        assert len(texts) == input_ids.shape[0]
-        
-        for idx, (cur_texts, cur_input_ids) in enumerate(zip(texts, input_ids)):
+        for extra_text_input_ids, extra_text_attention_masks, cur_input_ids in \
+            zip(extra_texts_inputs["extra_text_input_ids"], extra_texts_inputs["extra_text_attention_mask"], input_ids):
             
-            assert isinstance(cur_input_ids, Tensor), type(cur_input_ids)
-            assert (cur_input_ids == PLACEHOLDER_ID).sum() == len(cur_texts)
-            
-            text_embeddings = self.encode_texts(cur_texts)
+            num_extra_texts = (cur_input_ids == PLACEHOLDER_ID).sum()
+            assert num_extra_texts <= extra_text_input_ids.shape[0]
+            extra_text_input_ids = extra_text_input_ids[:num_extra_texts]
+            extra_text_attention_masks = extra_text_attention_masks[:num_extra_texts]
+            text_embeddings = self.encode_texts(input_ids=extra_text_input_ids, attention_mask=extra_text_attention_masks)
             
             cur_input_embeds = self.get_model().embed_tokens(cur_input_ids)
-            cur_input_embeds[cur_input_ids == PLACEHOLDER_ID] = text_embeddings.to(cur_input_embeds.dtype)
-            input_embeddings.append(cur_input_embeds)
+            new_input_embeds = cur_input_embeds.clone()
+            new_input_embeds[cur_input_ids == PLACEHOLDER_ID] = text_embeddings.to(cur_input_embeds.dtype)
+            input_embeddings.append(new_input_embeds)
             
         input_embeddings = torch.stack(input_embeddings)
         
@@ -249,7 +231,7 @@ class ELlamaForCausalLM(ELMMetaForCausalLM, LlamaForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        texts: Optional[list[list[str]]] = None,
+        **extra_texts_inputs
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
         if inputs_embeds is None:
@@ -266,7 +248,7 @@ class ELlamaForCausalLM(ELMMetaForCausalLM, LlamaForCausalLM):
                 attention_mask,
                 past_key_values,
                 labels,
-                texts
+                **extra_texts_inputs
             )
 
         return super().forward(
@@ -286,15 +268,17 @@ class ELlamaForCausalLM(ELMMetaForCausalLM, LlamaForCausalLM):
     def generate(
         self,
         inputs: Optional[torch.Tensor] = None,
-        texts: Optional[list[list[str]]] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         position_ids = kwargs.pop("position_ids", None)
         attention_mask = kwargs.pop("attention_mask", None)
         if "inputs_embeds" in kwargs:
             raise NotImplementedError("`inputs_embeds` is not supported")
+        
+        extra_text_input_ids = kwargs.pop("extra_text_input_ids", None)
+        extra_text_attention_mask = kwargs.pop("extra_text_attention_mask", None)
 
-        if texts is not None:
+        if extra_text_input_ids is not None and extra_text_attention_mask is not None:
             (
                 inputs,
                 position_ids,
@@ -308,7 +292,8 @@ class ELlamaForCausalLM(ELMMetaForCausalLM, LlamaForCausalLM):
                 attention_mask,
                 None,
                 None,
-                texts
+                extra_text_input_ids=extra_text_input_ids,
+                extra_text_attention_mask=extra_text_attention_mask
             )
         else:
             inputs_embeds = self.get_model().embed_tokens(inputs)
@@ -322,12 +307,14 @@ class ELlamaForCausalLM(ELMMetaForCausalLM, LlamaForCausalLM):
         
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None,
                                       inputs_embeds=None, **kwargs):
-        texts = kwargs.pop("texts", None)
+        extra_text_input_ids = kwargs.pop("extra_text_input_ids", None)
+        extra_text_attention_mask = kwargs.pop("extra_text_attention_mask", None)
         inputs = super().prepare_inputs_for_generation(
             input_ids, past_key_values=past_key_values, inputs_embeds=inputs_embeds, **kwargs
         )
-        if texts is not None:
-            inputs['texts'] = texts
+        if extra_text_input_ids is not None and extra_text_attention_mask is not None:
+            inputs["extra_text_input_ids"] = extra_text_input_ids
+            inputs["extra_text_attention_mask"] = extra_text_attention_mask
         return inputs
     
     
