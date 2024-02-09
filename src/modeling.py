@@ -144,7 +144,7 @@ class ELMMetaForCausalLM(ABC):
         return self.get_model().get_projector()
     
     def encode_texts(self, **inputs: dict) -> Tensor:
-        embeddings = self.get_encoder()(**inputs)
+        embeddings = self.get_encoder()(**inputs).to(torch.bfloat16)
         embeddings = self.get_projector()(embeddings)
         return embeddings
     

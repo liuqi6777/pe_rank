@@ -476,12 +476,15 @@ def train(attn_implementation=None):
         model = ELlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
-            device_map=device_map,
+            attn_implementation=attn_implementation,
+            torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
         )
     else:
         model = transformers.LlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
+            attn_implementation=attn_implementation,
+            torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
         )
 
     # Set RoPE scaling factor
@@ -533,9 +536,7 @@ def train(attn_implementation=None):
             cache_dir=training_args.cache_dir,
             trust_remote_code=model_args.trust_remote_code,
         )
-        encoder = model.get_encoder()
-        encoder.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
-
+        
         model.config.tokenizer_padding_side = tokenizer.padding_side
         model.config.tokenizer_model_max_length = tokenizer.model_max_length
 
