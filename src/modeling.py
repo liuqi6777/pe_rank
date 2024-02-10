@@ -198,15 +198,13 @@ class ELlamaModel(ELMMetaModel, LlamaModel):
     
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
-        LlamaModel.__init__(self, config)
         
         
 class ELlamaForCausalLM(ELMMetaForCausalLM, LlamaForCausalLM):
     config_class = ELlamaCofig
     
     def __init__(self, config: LlamaConfig):
-        super().__init__(config)
-        LlamaForCausalLM.__init__(self, config)
+        super(LlamaForCausalLM, self).__init__(config)
         self.model = ELlamaModel(config)
         self.pretraining_tp = config.pretraining_tp
         
