@@ -35,9 +35,6 @@ from transformers import Trainer, BitsAndBytesConfig, deepspeed
 
 from fastchat.conversation import SeparatorStyle
 from fastchat.model.model_adapter import get_conversation_template
-from fastchat.train.llama_flash_attn_monkey_patch import (
-    replace_llama_attn_with_flash_attn,
-)
 
 from modeling import ELlamaForCausalLM
 
@@ -87,7 +84,12 @@ class TrainingArguments(transformers.TrainingArguments):
             "help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
         },
     )
-    flash_attn: bool = False
+    attn_implementation: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "The implementation of attention. Can be 'flash_attention_2'."
+        },
+    )
 
 
 @dataclass
@@ -242,7 +244,7 @@ def preprocess(
     input_ids = tokenizer(
         conversations,
         return_tensors="pt",
-        padding="max_length",
+        padding="longest",
         max_length=tokenizer.model_max_length,
         truncation=True,
     ).input_ids
@@ -443,7 +445,7 @@ class Trainer(Trainer):
             super()._save(output_dir, state_dict)
 
 
-def train(attn_implementation=None):
+def train():
     global local_rank
 
     parser = transformers.HfArgumentParser(
@@ -457,9 +459,6 @@ def train(attn_implementation=None):
     ) = parser.parse_args_into_dataclasses()
 
     local_rank = training_args.local_rank
-    
-    if training_args.flash_attn:
-        replace_llama_attn_with_flash_attn()
         
     device_map = None
     world_size = int(os.environ.get("WORLD_SIZE", 1))
@@ -476,16 +475,17 @@ def train(attn_implementation=None):
         model = ELlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
-            attn_implementation=attn_implementation,
+            attn_implementation=training_args.attn_implementation,
             torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
         )
     else:
         model = transformers.LlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
-            attn_implementation=attn_implementation,
+            attn_implementation=training_args.attn_implementation,
             torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
         )
+    model.generation_config.do_sample = True
 
     # Set RoPE scaling factor
     orig_ctx_len = getattr(model.config, "max_position_embeddings", None)
@@ -506,14 +506,6 @@ def train(attn_implementation=None):
         )
 
         model = get_peft_model(model, lora_config)
-        
-    if training_args.flash_attn:
-        for name, module in model.named_modules():
-            if "norm" in name:
-                module = module.to(compute_dtype)
-            if "lm_head" in name or "embed_tokens" in name:
-                if hasattr(module, "weight"):
-                    module = module.to(compute_dtype)
         
     # Load tokenizer
     tokenizer = transformers.AutoTokenizer.from_pretrained(
