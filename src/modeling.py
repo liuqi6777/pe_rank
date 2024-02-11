@@ -74,8 +74,8 @@ class Encoder(nn.Module):
     @staticmethod
     @torch.no_grad()
     def mean_pooling(embeddings: Tensor, attention_mask: Tensor) -> Tensor:
-        return torch.sum(embeddings * attention_mask.unsqueeze(-1), dim=1) \
-            / torch.clamp(torch.sum(attention_mask, dim=1, keepdims=True), min=1e-9)
+        return (torch.sum(embeddings * attention_mask.unsqueeze(-1), dim=1) \
+            / torch.clamp(torch.sum(attention_mask, dim=1, keepdims=True), min=1e-9)).to(embeddings.dtype)
 
     @torch.no_grad()    
     def forward(self, **inputs) -> dict[str, Tensor]:
@@ -144,7 +144,7 @@ class ELMMetaForCausalLM(ABC):
         return self.get_model().get_projector()
     
     def encode_texts(self, **inputs: dict) -> Tensor:
-        embeddings = self.get_encoder()(**inputs).to(torch.bfloat16)
+        embeddings = self.get_encoder()(**inputs)
         embeddings = self.get_projector()(embeddings)
         return embeddings
     
@@ -173,7 +173,7 @@ class ELMMetaForCausalLM(ABC):
             extra_text_attention_masks = extra_text_attention_masks[:num_extra_texts]
             text_embeddings = self.encode_texts(input_ids=extra_text_input_ids, attention_mask=extra_text_attention_masks)
             
-            cur_input_embeds = self.get_model().embed_tokens(cur_input_ids)
+            cur_input_embeds = self.get_model().embed_tokens(cur_input_ids.to(self.get_model().device))
             new_input_embeds = cur_input_embeds.clone()
             new_input_embeds[cur_input_ids == PLACEHOLDER_ID] = text_embeddings.to(cur_input_embeds.dtype)
             input_embeddings.append(new_input_embeds)
