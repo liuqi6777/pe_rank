@@ -570,7 +570,7 @@ def train():
     
     if lora_args.lora_enable:
         state_dict = get_peft_state_maybe_zero_3(
-            model.named_parameters(), training_args.lora_bias
+            model.named_parameters(), lora_args.lora_bias
         )
         non_lora_state_dict = get_peft_state_non_lora_maybe_zero_3(
             model.named_parameters()
