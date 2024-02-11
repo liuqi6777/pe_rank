@@ -118,8 +118,10 @@ def load_pretrained_model(
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
             model.load_state_dict(projector_weights, strict=False)
             
-            
         model.resize_token_embeddings(len(tokenizer))
+        
+        global PLACEHOLDER_ID
+        PLACEHOLDER_ID = tokenizer.convert_tokens_to_ids(PLACEHOLDER)
         
         encoder = model.get_encoder()
         if device_map != 'auto':
@@ -158,3 +160,4 @@ if __name__ == "__main__":
         use_flash_attn=True
     )
     print(model)
+    print(PLACEHOLDER_ID)
