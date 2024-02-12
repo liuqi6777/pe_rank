@@ -123,4 +123,4 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='dl19')
     parser.add_argument('--ranking', type=str, required=True)
     args = parser.parse_args()
-    EvalFunction.eval(['-c', '-m', 'ndcg_cut.10', TOPICS[args.dataset], args.output])
+    EvalFunction.eval(['-c', '-m', 'ndcg_cut.10', TOPICS[args.dataset], args.ranking])
