@@ -140,7 +140,7 @@ class ELMMetaForCausalLM(ABC):
     def get_encoder(self):
         return self.get_model().get_encoder()
     
-    def get_projector(self):
+    def get_projector(self) -> nn.Sequential:
         return self.get_model().get_projector()
     
     def encode_texts(self, **inputs: dict) -> Tensor:
@@ -164,6 +164,7 @@ class ELMMetaForCausalLM(ABC):
         
         input_embeddings = []
         
+        # TODO: allow one text corresponding to multiple placeholders, now it's 1 to 1
         for extra_text_input_ids, extra_text_attention_masks, cur_input_ids in \
             zip(extra_texts_inputs["extra_text_input_ids"], extra_texts_inputs["extra_text_attention_mask"], input_ids):
             
@@ -303,12 +304,13 @@ class ELlamaForCausalLM(ELMMetaForCausalLM, LlamaForCausalLM):
             **kwargs
         )
         
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None,
+    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, attention_mask=None,
                                       inputs_embeds=None, **kwargs):
         extra_text_input_ids = kwargs.pop("extra_text_input_ids", None)
         extra_text_attention_mask = kwargs.pop("extra_text_attention_mask", None)
         inputs = super().prepare_inputs_for_generation(
-            input_ids, past_key_values=past_key_values, inputs_embeds=inputs_embeds, **kwargs
+            input_ids, past_key_values=past_key_values, attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds, **kwargs
         )
         if extra_text_input_ids is not None and extra_text_attention_mask is not None:
             inputs["extra_text_input_ids"] = extra_text_input_ids
