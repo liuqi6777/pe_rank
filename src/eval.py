@@ -10,11 +10,8 @@ from builder import load_pretrained_model
 PLACEHOLDER = "<PLACEHOLDER>"
 INSTRUCTION = """I will provide you with {num_retrieved_passages} passages, each indicated by a numerical identifier []. 
 Rank the passages based on their relevance to the search query: {query}. 
-
 {passages_llm_inputs}
-
 Search Query: {query}. 
-
 Rank the {num_retrieved_passages} passages above based on their relevance to the search query. 
 All the passages should be included and listed using identifiers, in descending order of relevance. The output format should be [] > [], e.g., [4] > [2]. Only respond with the ranking results, do not say any word or explain.
 """
@@ -23,10 +20,10 @@ All the passages should be included and listed using identifiers, in descending 
 def eval_model(args):
 
     tokenizer, model, context_len = load_pretrained_model(
-        model_path="./checkpoints/vicuna.jina.rankgpt100k.finetune",
-        model_base=None,
+        model_path="./checkpoints/vicuna.jina.construct200k-rankgpt100k.finetune",
+        model_base="lmsys/vicuna-7b-v1.5",
         model_name="ellama",
-        projector_path="./checkpoints/vicuna.jina.rankgpt100k.pretrain",
+        projector_path="./checkpoints/vicuna.jina.construct200k.pretrain",
         use_flash_attn=True,
     )
     config = model.config
