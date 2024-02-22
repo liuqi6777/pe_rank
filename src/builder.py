@@ -24,15 +24,15 @@ from modeling import *
 
 
 def load_pretrained_model(
-    model_path, 
-    model_base, 
-    model_name,
+    model_path,
+    model_base=None,
+    model_name=None,
     projector_path=None,
-    load_8bit=False, 
-    load_4bit=False, 
-    device_map="auto", 
-    device="cuda", 
-    use_flash_attn=False, 
+    load_8bit=False,
+    load_4bit=False,
+    device_map="auto",
+    device="cuda",
+    use_flash_attn=False,
     **kwargs
     ):
     kwargs = {"device_map": device_map, **kwargs}
@@ -57,19 +57,15 @@ def load_pretrained_model(
         kwargs['attn_implementation'] = 'flash_attention_2'
 
     if 'ellama' in model_name.lower():
-        if 'lora' in model_name.lower() and model_base is None:
-            warnings.warn('There is `lora` in model name but no `model_base` is provided. If you are loading a LoRA model, please provide the `model_base` argument. Detailed instruction: https://github.com/haotian-liu/LLaVA#launch-a-model-worker-lora-weights-unmerged.')
         if 'lora' in model_name.lower() and model_base is not None:
             lora_cfg_pretrained = AutoConfig.from_pretrained(model_path)
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
-            print('Loading LLaVA from base model...')
             model = ELlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=lora_cfg_pretrained, **kwargs)
             token_num, tokem_dim = model.lm_head.out_features, model.lm_head.in_features
             if model.lm_head.weight.shape[0] != token_num:
                 model.lm_head.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
                 model.model.embed_tokens.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
 
-            print('Loading additional LLaVA weights...')
             if os.path.exists(os.path.join(model_path, 'non_lora_trainables.bin')):
                 non_lora_trainables = torch.load(os.path.join(model_path, 'non_lora_trainables.bin'), map_location='cpu')
             else:
@@ -98,13 +94,20 @@ def load_pretrained_model(
             print('Loading model from base model...')
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
             cfg_pretrained = AutoConfig.from_pretrained(model_path)
+            cfg_pretrained.vocab_size -= 1  # FIXME
             model = ELlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
+            model.initialize_tokenizer(tokenizer)
+            
+            # FIXME: load encoder correctly
+            print(cfg_pretrained)
+            model.get_model().encoder = Encoder(cfg_pretrained.encoder_name, cfg_pretrained)
+            model.get_encoder().to(model.device)
 
-            projector_weights = torch.load(os.path.join(model_path, 'projector.bin'), map_location='cpu')
+            projector_weights = torch.load(os.path.join(projector_path, 'projector.bin'), map_location='cpu')
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
             model.load_state_dict(projector_weights, strict=False)
         else:
-            print('Loading model from model_path...')
+            print(f'Loading model from {model_path}...')
             tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
             config = AutoConfig.from_pretrained(model_path)
             model = ELlamaForCausalLM.from_pretrained(
