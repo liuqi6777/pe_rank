@@ -12,8 +12,8 @@ from builder import load_pretrained_model
 
 
 EVAL_DATASETS = [
-    # "data/pretrain_eval/query_reconstruction_eval.jsonl",
-    # "data/pretrain_eval/doc_reconstruction_eval.jsonl",
+    "data/pretrain_eval/query_reconstruction_eval.jsonl",
+    "data/pretrain_eval/doc_reconstruction_eval.jsonl",
     "data/pretrain_eval/pair_relevance_comparision_eval.jsonl",
 ]
 
