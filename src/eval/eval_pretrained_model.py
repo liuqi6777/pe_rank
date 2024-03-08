@@ -8,7 +8,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 from fastchat.model.model_adapter import get_conversation_template
 
-from builder import load_pretrained_model
+from modeling.builder import load_pretrained_model
 
 
 EVAL_DATASETS = [
