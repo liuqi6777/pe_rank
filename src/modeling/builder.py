@@ -13,7 +13,6 @@ def load_pretrained_model(
     model_path,
     model_base=None,
     model_name=None,
-    projector_path=None,
     load_8bit=False,
     load_4bit=False,
     device_map="auto",
@@ -85,7 +84,7 @@ def load_pretrained_model(
             print('Loading model from base model...')
             tokenizer = AutoTokenizer.from_pretrained(
                 model_base, use_fast=False)
-            cfg_pretrained = AutoConfig.from_pretrained(projector_path)
+            cfg_pretrained = AutoConfig.from_pretrained(model_path)
             cfg_pretrained.vocab_size -= 2  # FIXME
             model = EmbedLlamaForRankLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
             model.initialize_tokenizer(tokenizer)
@@ -95,7 +94,7 @@ def load_pretrained_model(
             model.get_encoder().to("cuda")   # FIXME
             model.get_projector().to("cuda")
 
-            projector_weights = torch.load(os.path.join(projector_path, 'projector.bin'), map_location='cpu')
+            projector_weights = torch.load(os.path.join(model_path, 'projector.bin'), map_location='cpu')
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
             model.load_state_dict(projector_weights, strict=False)
         else:
@@ -109,17 +108,6 @@ def load_pretrained_model(
                 **kwargs
             )
             model.initialize_tokenizer(tokenizer)
-
-            model.get_model().encoder = Encoder(config.encoder_name, config)
-            model.get_model().projector = build_projector(config)
-            model.get_encoder().to("cuda")  # FIXME
-            model.get_projector().to("cuda")
-
-            projector_path = projector_path or model_path
-            projector_weights = torch.load(os.path.join(
-                projector_path, 'projector.bin'), map_location='cpu')
-            projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
-            model.load_state_dict(projector_weights, strict=False)
 
         model.resize_token_embeddings(len(tokenizer))
 
