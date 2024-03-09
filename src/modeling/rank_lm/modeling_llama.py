@@ -149,8 +149,8 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
             hidden_states = outputs[0].to(extra_text_embeddings.device)
             hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
             extra_text_output_embeddings = hidden_states[0, extra_text_positions]
-            # logits = (hidden_states[0, -1] @ extra_text_embeddings[0].T).flatten()
-            logits = (hidden_states[0, -1] @ extra_text_output_embeddings.T).flatten()
+            logits = (hidden_states[0, -1] @ extra_text_embeddings[0].T).flatten()
+            # logits = (hidden_states[0, -1] @ extra_text_output_embeddings.T).flatten()
             
             # rankings = (torch.argsort(logits, descending=True) + 1).detach().cpu().tolist()
             # break

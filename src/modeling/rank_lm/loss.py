@@ -1,4 +1,5 @@
 import torch
+from itertools import product
 from torch import nn, Tensor, LongTensor
 
 from constants import IGNORE_TOKEN_ID
@@ -8,9 +9,11 @@ def basic_rank_loss(hidden_states: Tensor, text_embeddings: Tensor, labels: Long
     hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
     logits = hidden_states @ text_embeddings.permute(0, 2, 1)
     label_mask, ranking_mask = make_mask_with_labels(labels, ranking)
-    target = (logits * label_mask).sum(-1)  # (batch_size, sequence_length)
-    z = torch.clamp((logits * ranking_mask).sum(-1), min=1e-9)
-    loss = -torch.where((target / z) != 0, torch.log(target / z), 0).sum(-1).mean()
+    target = (logits * label_mask).sum(-1)
+    logits[ranking_mask == 0] = float("-inf")
+    z = torch.logsumexp(logits, dim=-1)
+    prob = torch.where(z == float("-inf"), torch.zeros_like(target), target - z)
+    loss = -torch.sum(prob, dim=-1).mean()
     return loss
 
 
