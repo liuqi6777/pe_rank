@@ -50,9 +50,9 @@ class MetaLM:
                 input_ids=extra_text_input_ids, attention_mask=extra_text_attention_masks)
             all_text_embeddings.append(text_embeddings[:(cur_input_ids == PLACEHOLDER_ID).sum().item(), :])
 
-            cur_input_embeds = self.get_model().embed_tokens(
-                cur_input_ids.to(self.get_model().device))
+            cur_input_embeds = self.get_model().embed_tokens(cur_input_ids.to(self.get_model().device))
             new_input_embeds = cur_input_embeds.clone()
+            text_embeddings = text_embeddings.to(new_input_embeds.device)
             new_input_embeds[(cur_input_ids == PLACEHOLDER_ID) | (cur_input_ids == RANK_TOKEN_ID)] = text_embeddings.to(
                 cur_input_embeds.dtype)
             input_embeddings.append(new_input_embeds)
