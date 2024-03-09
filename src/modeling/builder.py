@@ -86,12 +86,14 @@ def load_pretrained_model(
             tokenizer = AutoTokenizer.from_pretrained(
                 model_base, use_fast=False)
             cfg_pretrained = AutoConfig.from_pretrained(projector_path)
-            cfg_pretrained.vocab_size -= 1  # FIXME
-            model = EmbedLlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
+            cfg_pretrained.vocab_size -= 2  # FIXME
+            model = EmbedLlamaForRankLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
             model.initialize_tokenizer(tokenizer)
 
             model.get_model().encoder = Encoder(cfg_pretrained.encoder_name, cfg_pretrained)
             model.get_model().projector = build_projector(cfg_pretrained)
+            model.get_encoder().to("cuda")   # FIXME
+            model.get_projector().to("cuda")
 
             projector_weights = torch.load(os.path.join(projector_path, 'projector.bin'), map_location='cpu')
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
@@ -100,12 +102,19 @@ def load_pretrained_model(
             print(f'Loading model from {model_path}...')
             tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
             config = AutoConfig.from_pretrained(model_path)
-            model = EmbedLlamaForCausalLM.from_pretrained(
+            model = EmbedLlamaForRankLM.from_pretrained(
                 model_path,
                 config=config,
                 low_cpu_mem_usage=True,
                 **kwargs
             )
+            model.initialize_tokenizer(tokenizer)
+
+            model.get_model().encoder = Encoder(config.encoder_name, config)
+            model.get_model().projector = build_projector(config)
+            model.get_encoder().to("cuda")  # FIXME
+            model.get_projector().to("cuda")
+
             projector_path = projector_path or model_path
             projector_weights = torch.load(os.path.join(
                 projector_path, 'projector.bin'), map_location='cpu')
