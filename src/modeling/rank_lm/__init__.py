@@ -1,1 +1,1 @@
-from modeling.rank_lm.modeling_llama import EmbedLlamaCofig, EmbedLlamaModel, EmbedLlamaForRankLM
+from modeling.rank_lm.modeling_llama import EmbedLlamaConfig, EmbedLlamaModel, EmbedLlamaForRankLM

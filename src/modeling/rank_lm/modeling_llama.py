@@ -9,19 +9,19 @@ from modeling.meta import MetaLM
 from modeling.rank_lm.loss import basic_rank_loss
 
 
-class EmbedLlamaCofig(LlamaConfig):
+class EmbedLlamaConfig(LlamaConfig):
     model_type = "embed_llama"
 
 
-class EmbedLlamaModel(LlamaModel, ELMMetaModel):
-    config_class = EmbedLlamaCofig
+class EmbedLlamaModel(ELMMetaModel, LlamaModel):
+    config_class = EmbedLlamaConfig
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
 
 
 class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
-    config_class = EmbedLlamaCofig
+    config_class = EmbedLlamaConfig
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
@@ -159,7 +159,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
             ranking = torch.argmax(logits).item()
             ranking_mask[ranking] = 1
             rankings.append(ranking + 1)
-            inputs_embeds = torch.cat([inputs_embeds, extra_text_embeddings[:, [ranking]]], dim=1)
+            inputs_embeds = torch.cat([inputs_embeds, extra_text_embeddings[:, [ranking]].to(inputs_embeds.device)], dim=1)
             extra_text_positions = torch.cat([extra_text_positions, 
                                               torch.tensor([False], device=extra_text_positions.device)])
             past_key_values = outputs[1]
