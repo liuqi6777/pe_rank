@@ -30,12 +30,13 @@ class MetaLM:
         **extra_texts_inputs: dict[str, Tensor]
     ) -> tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[tuple], Optional[Tensor], Optional[Tensor]]:
         if self.get_model().get_encoder() is None or "extra_text_input_ids" not in extra_texts_inputs:
-            return input_ids, position_ids, attention_mask, past_key_values, None, labels
+            return input_ids, position_ids, attention_mask, past_key_values, None, labels, None, None
 
         assert "extra_text_input_ids" in extra_texts_inputs and "extra_text_attention_mask" in extra_texts_inputs, extra_texts_inputs.keys()
 
         input_embeddings = []
         all_text_embeddings = []
+        extra_text_positions = []
 
         # TODO: allow one text corresponding to multiple placeholders, now it's 1 to 1
         for extra_text_input_ids, extra_text_attention_masks, cur_input_ids in \
@@ -55,11 +56,16 @@ class MetaLM:
             new_input_embeds[(cur_input_ids == PLACEHOLDER_ID) | (cur_input_ids == RANK_TOKEN_ID)] = text_embeddings.to(
                 cur_input_embeds.dtype)
             input_embeddings.append(new_input_embeds)
+            
+            extra_text_position = cur_input_ids == PLACEHOLDER_ID
+            extra_text_positions.append(extra_text_position)
 
         input_embeddings = torch.stack(input_embeddings)
         all_text_embeddings = torch.stack(all_text_embeddings)
+        extra_text_positions = torch.stack(extra_text_positions)
 
-        return None, position_ids, attention_mask, past_key_values, input_embeddings, labels, all_text_embeddings
+        return None, position_ids, attention_mask, past_key_values, input_embeddings, labels, \
+               all_text_embeddings, extra_text_positions
 
     def initialize_tokenizer(self, tokenizer: transformers.PreTrainedTokenizer):
         global PLACEHOLDER_ID

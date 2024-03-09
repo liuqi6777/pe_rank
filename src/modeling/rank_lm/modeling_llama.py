@@ -59,6 +59,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
                 inputs_embeds,
                 labels,
                 extra_embeddings,
+                _,
             ) = self.prepare_inputs_labels_embeddings(
                 input_ids,
                 position_ids,
@@ -113,7 +114,8 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
                 _,
                 inputs_embeds,
                 _,
-                extra_text_embeddings
+                extra_text_embeddings,
+                extra_text_positions,
             ) = self.prepare_inputs_labels_embeddings(
                 inputs,
                 position_ids,
@@ -132,9 +134,11 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         assert extra_text_embeddings.shape[0] == 1, extra_text_embeddings.shape
         num_extra_texts = extra_text_embeddings.shape[1]
 
+        extra_text_positions = extra_text_positions[0]
+
         rankings = []
-        ranking_mask = torch.ones(
-            extra_text_embeddings.shape[1], dtype=torch.long, device=extra_text_embeddings.device)
+        ranking_mask = torch.zeros(extra_text_embeddings.shape[1], 
+                                   dtype=torch.long, device=extra_text_embeddings.device)
         for _ in range(num_extra_texts):
             outputs = self.model(
                 input_ids=None,
@@ -142,13 +146,22 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
                 past_key_values=past_key_values,
                 use_cache=True,
             )
-            ranking = torch.argmax(
-                (outputs[0][0, -1] @ extra_text_embeddings.permute(0, 2, 1)).flatten() * ranking_mask).item()
-            ranking_mask[ranking] = 0
+            hidden_states = outputs[0].to(extra_text_embeddings.device)
+            hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
+            extra_text_output_embeddings = hidden_states[0, extra_text_positions]
+            # logits = (hidden_states[0, -1] @ extra_text_embeddings[0].T).flatten()
+            logits = (hidden_states[0, -1] @ extra_text_output_embeddings.T).flatten()
+            
+            # rankings = (torch.argsort(logits, descending=True) + 1).detach().cpu().tolist()
+            # break
+            
+            logits[ranking_mask == 1] = -float("inf")
+            ranking = torch.argmax(logits).item()
+            ranking_mask[ranking] = 1
             rankings.append(ranking + 1)
-
-            inputs_embeds = torch.cat(
-                [inputs_embeds, extra_text_embeddings[:, ranking]], dim=1)
+            inputs_embeds = torch.cat([inputs_embeds, extra_text_embeddings[:, [ranking]]], dim=1)
+            extra_text_positions = torch.cat([extra_text_positions, 
+                                              torch.tensor([False], device=extra_text_positions.device)])
             past_key_values = outputs[1]
 
         return rankings
