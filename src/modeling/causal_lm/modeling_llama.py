@@ -59,6 +59,7 @@ class EmbedLlamaForCausalLM(MetaLM, LlamaForCausalLM):
                 past_key_values,
                 inputs_embeds,
                 labels,
+                _,
                 _
             ) = self.prepare_inputs_labels_embeddings(
                 input_ids,
@@ -117,7 +118,8 @@ class EmbedLlamaForCausalLM(MetaLM, LlamaForCausalLM):
                 _,
                 inputs_embeds,
                 _,
-                _
+                _,
+                _,
             ) = self.prepare_inputs_labels_embeddings(
                 inputs,
                 position_ids,
