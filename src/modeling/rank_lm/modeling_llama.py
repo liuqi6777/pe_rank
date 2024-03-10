@@ -1,8 +1,8 @@
-from typing import Union, Optional, List, Tuple
 import torch
+from dataclasses import dataclass
+from typing import Optional
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaModel, LlamaPreTrainedModel
-from transformers.modeling_outputs import CausalLMOutputWithPast
-from transformers.generation.utils import GenerateOutput
+from transformers.file_utils import ModelOutput
 
 from modeling.model import ELMMetaModel
 from modeling.meta import MetaLM
@@ -18,6 +18,13 @@ class EmbedLlamaModel(ELMMetaModel, LlamaModel):
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
+
+
+@dataclass
+class RankingOutput(ModelOutput):
+    loss: Optional[torch.FloatTensor] = None
+    logits: Optional[torch.FloatTensor] = None
+    ranking: Optional[torch.LongTensor] = None
 
 
 class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
@@ -40,7 +47,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -48,7 +55,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         **extra_texts_inputs
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> RankingOutput:
 
         if inputs_embeds is None:
             (
@@ -88,15 +95,19 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
             return_dict=return_dict,
         )
         ranking = extra_texts_inputs["ranking"]
-        loss = basic_rank_loss(outputs[0], extra_embeddings, labels, ranking)
-        return {"loss": loss}
+        loss, logits = basic_rank_loss(outputs[0], extra_embeddings, labels, ranking)
+        return RankingOutput(
+            loss=loss,
+            logits=logits,
+            ranking=ranking,
+        )
 
     @torch.no_grad()
     def rank(
         self,
         inputs: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[GenerateOutput, torch.LongTensor]:
+    ) -> list[int]:
         position_ids = kwargs.pop("position_ids", None)
         attention_mask = kwargs.pop("attention_mask", None)
         if "inputs_embeds" in kwargs:
