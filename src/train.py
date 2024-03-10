@@ -123,7 +123,7 @@ def train():
         model.config.tokenizer_model_max_length = tokenizer.model_max_length
 
         model.config.tune_mlp_adapter = training_args.tune_mlp_adapter = model_args.tune_mlp_adapter
-        model.config.freeze_backbone = model_args.freeze_backbone
+        model.config.freeze_backbone = training_args.freeze_backbone = model_args.freeze_backbone
         if model_args.freeze_backbone:
             model.requires_grad_(False)
         for p in model.get_model().projector.parameters():

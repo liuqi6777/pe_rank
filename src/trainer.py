@@ -1,6 +1,7 @@
 import os
 import torch
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
+from torch.nn.modules import Module
 
 from transformers import Trainer as HFTrainer
 
@@ -9,7 +10,7 @@ from utils import get_adapter_state_maybe_zero_3
 
 class Trainer(HFTrainer):
     def _save_checkpoint(self, model, trial, metrics=None):
-        if getattr(self.args, 'tune_mlp_adapter', False):
+        if getattr(self.args, 'tune_mlp_adapter', False) and getattr(self.args, 'freeze_backbone', False):
             from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
             checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
 
@@ -28,7 +29,7 @@ class Trainer(HFTrainer):
             super()._save_checkpoint(model.get_model(), trial, metrics)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        if getattr(self.args, 'tune_mlp_adapter', False):
+        if getattr(self.args, 'tune_mlp_adapter', False) and getattr(self.args, 'freeze_backbone', False):
             pass
         else:
             super()._save(output_dir, state_dict)
