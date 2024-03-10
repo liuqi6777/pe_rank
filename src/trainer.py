@@ -1,8 +1,5 @@
 import os
 import torch
-from typing import Dict, List, Optional, Tuple
-from torch.nn.modules import Module
-
 from transformers import Trainer as HFTrainer
 
 from utils import get_adapter_state_maybe_zero_3
@@ -28,7 +25,7 @@ class Trainer(HFTrainer):
         else:
             super()._save_checkpoint(model.get_model(), trial, metrics)
 
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+    def _save(self, output_dir=None, state_dict=None):
         if getattr(self.args, 'tune_mlp_adapter', False) and getattr(self.args, 'freeze_backbone', False):
             pass
         else:
