@@ -87,7 +87,7 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
 
     # FIXME
 
-    if getattr(trainer.args, "tune_mlp_adapter", False):
+    if getattr(trainer.args, "tune_mlp_adapter", False) and getattr(trainer.args, 'freeze_backbone', False):
         # Only save Adapter
         keys_to_match = ['projector']
 
