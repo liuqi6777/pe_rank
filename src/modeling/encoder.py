@@ -55,10 +55,16 @@ class Encoder(nn.Module):
     def forward(self, **inputs) -> dict[str, Tensor]:
         for key in inputs:
             inputs[key] = inputs[key].to(self.encoder.device)
-        outputs = self.encoder(**inputs)
-        if self.pooling == 'mean':
-            embeddings = self.mean_pooling(outputs.last_hidden_state, inputs['attention_mask'])
-        else:
-            embeddings = outputs.last_hidden_state[:, 0]
-        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=-1)
-        return embeddings
+        batch_size = 16
+        all_embeddings = []
+        for i in range(0, len(inputs['input_ids']), batch_size):
+            batch_inputs = {key: value[i:i+batch_size] for key, value in inputs.items()}
+            outputs = self.encoder(**batch_inputs)
+            if self.pooling == 'mean':
+                embeddings = self.mean_pooling(outputs.last_hidden_state, batch_inputs['attention_mask'])
+            else:
+                embeddings = outputs.last_hidden_state[:, 0]
+            all_embeddings.append(embeddings.detach().cpu())
+        all_embeddings = torch.cat(all_embeddings, dim=0)
+        all_embeddings = torch.nn.functional.normalize(all_embeddings, p=2, dim=-1)
+        return all_embeddings
