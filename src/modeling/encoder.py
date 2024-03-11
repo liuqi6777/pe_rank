@@ -64,7 +64,7 @@ class Encoder(nn.Module):
                 embeddings = self.mean_pooling(outputs.last_hidden_state, batch_inputs['attention_mask'])
             else:
                 embeddings = outputs.last_hidden_state[:, 0]
-            all_embeddings.append(embeddings.detach().cpu())
+            all_embeddings.append(embeddings)
         all_embeddings = torch.cat(all_embeddings, dim=0)
         all_embeddings = torch.nn.functional.normalize(all_embeddings, p=2, dim=-1)
         return all_embeddings
