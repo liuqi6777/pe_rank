@@ -24,6 +24,9 @@ INDEX = {
     'fever': 'beir-v1.0.0-fever-flat',
     'robust04': 'beir-v1.0.0-robust04.flat',
     'signal': 'beir-v1.0.0-signal1m.flat',
+    'nq': 'beir-v1.0.0-nq.flat',
+    'cfever': 'beir-v1.0.0-climate-fever.flat',
+    'hotpotqa': 'beir-v1.0.0-hotpotqa.flat',
 }
 
 TOPICS = {
@@ -42,6 +45,9 @@ TOPICS = {
     'fever': 'beir-v1.0.0-fever-test',
     'robust04': 'beir-v1.0.0-robust04-test',
     'signal': 'beir-v1.0.0-signal1m-test',
+    'nq': 'beir-v1.0.0-nq-test',
+    'cfever': 'beir-v1.0.0-climate-fever-test',
+    'hotpotqa': 'beir-v1.0.0-hotpotqa-test',
 }
 
 
@@ -55,7 +61,8 @@ def run_retriever(topics, searcher, qrels=None, topk=100, qid=None):
             rank += 1
             content = json.loads(searcher.doc(hit.docid).raw())
             if 'title' in content:
-                content = 'Title: ' + content['title'] + ' ' + 'Content: ' + content['text']
+                content = 'Title: ' + \
+                    content['title'] + ' ' + 'Content: ' + content['text']
             else:
                 content = content['contents']
             content = ' '.join(content.split())
@@ -74,7 +81,8 @@ def run_retriever(topics, searcher, qrels=None, topk=100, qid=None):
                 rank += 1
                 content = json.loads(searcher.doc(hit.docid).raw())
                 if 'title' in content:
-                    content = 'Title: ' + content['title'] + ' ' + 'Content: ' + content['text']
+                    content = 'Title: ' + \
+                        content['title'] + ' ' + 'Content: ' + content['text']
                 else:
                     content = content['contents']
                 content = ' '.join(content.split())
@@ -107,7 +115,6 @@ def eval_dataset(dataset, retriver, reranker, topk=100):
     print(f'Evaluation on {dataset}')
     print('#' * 20)
 
-    
     retrieval_results_file = f'results/{dataset}_retrival_{retriver}_top{topk}.jsonl'
     if os.path.exists(retrieval_results_file):
         with open(retrieval_results_file) as f:
@@ -123,7 +130,7 @@ def eval_dataset(dataset, retriver, reranker, topk=100):
         except:
             print(f'Failed to retrieve passages for {dataset}')
             return
-    
+
     # Rerank
     rerank_results = retrieval_results  # TODO
     # write_retrival_results(rerank_results, f'results/{dataset}_rerank_{reranker}_top{topk}.jsonl')
@@ -133,14 +140,14 @@ def eval_dataset(dataset, retriver, reranker, topk=100):
     write_eval_file(rerank_results, output_file)
     EvalFunction.eval(['-c', '-m', 'ndcg_cut.10', TOPICS[dataset], output_file])
     # Rename the output file to a better name
-    shutil.move(output_file, f'results/eval_{dataset}_{retriver}_{reranker}.txt')
-    
+    shutil.move(output_file, f'results/eval_{dataset}_{retriver}_{reranker}_top{topk}.txt')
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--retriver', type=str, default='bm25', choices=['bm25', 'splade++ed'])
-    parser.add_argument('--reranker', type=str, default='llama-2-7b-zeroshot')
+    parser.add_argument('--reranker', type=str, default=None)
     parser.add_argument('--topk', type=int, default=100)
     args = parser.parse_args()
     eval_dataset(args.dataset, args.retriver, args.reranker, args.topk)
