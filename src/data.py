@@ -18,8 +18,9 @@ from constants import RANK_TOKEN, IGNORE_TOKEN_ID
 def preprocess_for_causal_lm(
     sources,
     tokenizer: transformers.PreTrainedTokenizer,
+    conversation_template: str = "vicuna",
 ) -> dict[str, torch.Tensor]:
-    conv = get_conversation_template("vicuna")
+    conv = get_conversation_template(conversation_template)
     # conv.set_system_message()  # TODO: decide whether to modify system message
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
 
@@ -102,8 +103,9 @@ def preprocess_for_ranking(
     sources,
     rankings,
     tokenizer: transformers.PreTrainedTokenizer,
+    conversation_template: str = "vicuna",
 ) -> dict[str, torch.Tensor]:
-    conv = get_conversation_template("vicuna")
+    conv = get_conversation_template(conversation_template)
     # conv.set_system_message()  # TODO: decide whether to modify system message
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
 
@@ -152,12 +154,14 @@ class LazyDataset(Dataset):
         self,
         raw_data: list[dict],
         tokenizer: transformers.PreTrainedTokenizer,
-        encoder_tokenizer: transformers.PreTrainedTokenizer
+        encoder_tokenizer: transformers.PreTrainedTokenizer,
+        conversation_template: str = "vicuna",
     ):
         super().__init__()
         print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
         self.encoder_tokenizer = encoder_tokenizer
+        self.conversation_template = conversation_template
         self.raw_data = raw_data
         self.cached_data_dict = {}
 
@@ -178,7 +182,10 @@ class DatasetForCausalLM(LazyDataset):
             return self.cached_data_dict[i]
 
         ret = preprocess_for_causal_lm(
-            [self.raw_data[i]["conversations"]], self.tokenizer)
+            [self.raw_data[i]["conversations"]],
+            self.tokenizer,
+            self.conversation_template
+        )
         ret = dict(
             input_ids=ret["input_ids"][0],
             labels=ret["labels"][0],
@@ -206,7 +213,8 @@ class DatasetForRanking(LazyDataset):
         ret = preprocess_for_ranking(
             [self.raw_data[i]["conversations"]],
             [self.raw_data[i]["ranking"]],
-            self.tokenizer
+            self.tokenizer,
+            self.conversation_template
         )
         ranking = torch.tensor(self.raw_data[i]["ranking"])
         ret = dict(
@@ -285,7 +293,11 @@ def make_data_module(
     else:
         raise ValueError(f"Unsupported data format: {data_args.data_path}")
     train_dataset = dataset_cls(
-        train_json, tokenizer=tokenizer, encoder_tokenizer=encoder_tokenizer)
+        train_json,
+        tokenizer=tokenizer,
+        encoder_tokenizer=encoder_tokenizer,
+        conversation_template=data_args.conversation_template,
+    )
 
     data_collator = DataCollator(
         tokenizer=tokenizer,
