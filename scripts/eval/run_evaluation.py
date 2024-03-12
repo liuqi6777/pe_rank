@@ -5,7 +5,8 @@ import json
 import shutil
 import torch
 import numpy as np
-from pyserini.search import LuceneSearcher, get_topics, get_qrels
+from pyserini.index import IndexReader
+from pyserini.search import LuceneSearcher, LuceneImpactSearcher, get_topics, get_qrels
 from trec_eval import EvalFunction
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel, AutoModelForSequenceClassification
@@ -13,24 +14,46 @@ from sentence_transformers import SentenceTransformer
 
 
 INDEX = {
-    'dl19': 'msmarco-v1-passage',  # msmarco-v1-passage-splade-pp-ed-text
-    'dl20': 'msmarco-v1-passage',
-    'covid': 'beir-v1.0.0-trec-covid.flat',
-    'arguana': 'beir-v1.0.0-arguana.flat',
-    'touche': 'beir-v1.0.0-webis-touche2020.flat',
-    'news': 'beir-v1.0.0-trec-news.flat',
-    'scifact': 'beir-v1.0.0-scifact.flat',
-    'fiqa': 'beir-v1.0.0-fiqa.flat',
-    'scidocs': 'beir-v1.0.0-scidocs.flat',
-    'nfc': 'beir-v1.0.0-nfcorpus.flat',
-    'quora': 'beir-v1.0.0-quora.flat',
-    'dbpedia': 'beir-v1.0.0-dbpedia-entity.flat',
-    'fever': 'beir-v1.0.0-fever-flat',
-    'robust04': 'beir-v1.0.0-robust04.flat',
-    'signal': 'beir-v1.0.0-signal1m.flat',
-    'nq': 'beir-v1.0.0-nq.flat',
-    'cfever': 'beir-v1.0.0-climate-fever.flat',
-    'hotpotqa': 'beir-v1.0.0-hotpotqa.flat',
+    'bm25': {
+        'dl19': 'msmarco-v1-passage',
+        'dl20': 'msmarco-v1-passage',
+        'covid': 'beir-v1.0.0-trec-covid.flat',
+        'arguana': 'beir-v1.0.0-arguana.flat',
+        'touche': 'beir-v1.0.0-webis-touche2020.flat',
+        'news': 'beir-v1.0.0-trec-news.flat',
+        'scifact': 'beir-v1.0.0-scifact.flat',
+        'fiqa': 'beir-v1.0.0-fiqa.flat',
+        'scidocs': 'beir-v1.0.0-scidocs.flat',
+        'nfc': 'beir-v1.0.0-nfcorpus.flat',
+        'quora': 'beir-v1.0.0-quora.flat',
+        'dbpedia': 'beir-v1.0.0-dbpedia-entity.flat',
+        'fever': 'beir-v1.0.0-fever-flat',
+        'robust04': 'beir-v1.0.0-robust04.flat',
+        'signal': 'beir-v1.0.0-signal1m.flat',
+        'nq': 'beir-v1.0.0-nq.flat',
+        'cfever': 'beir-v1.0.0-climate-fever.flat',
+        'hotpotqa': 'beir-v1.0.0-hotpotqa.flat',
+    },
+    'splade++ed': {
+        'dl19': 'msmarco-v1-passage-splade-pp-ed-text',
+        'dl20': 'msmarco-v1-passage-splade-pp-ed-text',
+        'covid': 'beir-v1.0.0-trec-covid.splade-pp-ed',
+        'arguana': 'beir-v1.0.0-arguana.splade-pp-ed',
+        'touche': 'beir-v1.0.0-webis-touche2020.splade-pp-ed',
+        'news': 'beir-v1.0.0-trec-news.splade-pp-ed',
+        'scifact': 'beir-v1.0.0-scifact.splade-pp-ed',
+        'fiqa': 'beir-v1.0.0-fiqa.splade-pp-ed',
+        'scidocs': 'beir-v1.0.0-scidocs.splade-pp-ed',
+        'nfc': 'beir-v1.0.0-nfcorpus.splade-pp-ed',
+        'quora': 'beir-v1.0.0-quora.splade-pp-ed',
+        'dbpedia': 'beir-v1.0.0-dbpedia-entity.splade-pp-ed',
+        'fever': 'beir-v1.0.0-fever.splade-pp-ed',
+        'robust04': 'beir-v1.0.0-robust04.splade-pp-ed',
+        'signal': 'beir-v1.0.0-signal1m.splade-pp-ed',
+        'nq': 'beir-v1.0.0-nq.splade-pp-ed',
+        'cfever': 'beir-v1.0.0-climate-fever.splade-pp-ed',
+        'hotpotqa': 'beir-v1.0.0-hotpotqa.splade-pp-ed'
+    }
 }
 
 TOPICS = {
@@ -55,26 +78,8 @@ TOPICS = {
 }
 
 
-def run_retriever(topics, searcher, qrels=None, topk=100, qid=None):
+def run_retriever(topics, searcher, index_reader, qrels=None, topk=100, qid=None):
     ranks = []
-    if isinstance(topics, str):
-        hits = searcher.search(topics, k=topk)
-        ranks.append({'query': topics, 'hits': []})
-        rank = 0
-        for hit in hits:
-            rank += 1
-            content = json.loads(searcher.doc(hit.docid).raw())
-            if 'title' in content:
-                content = 'Title: ' + \
-                    content['title'] + ' ' + 'Content: ' + content['text']
-            else:
-                content = content['contents']
-            content = ' '.join(content.split())
-            ranks[-1]['hits'].append({
-                'content': content,
-                'qid': qid, 'docid': hit.docid, 'rank': rank, 'score': hit.score})
-        return ranks[-1]
-
     for qid in tqdm(topics):
         if qid in qrels:
             query = topics[qid]['title']
@@ -83,16 +88,23 @@ def run_retriever(topics, searcher, qrels=None, topk=100, qid=None):
             rank = 0
             for hit in hits:
                 rank += 1
-                content = json.loads(searcher.doc(hit.docid).raw())
-                if 'title' in content:
-                    content = 'Title: ' + \
-                        content['title'] + ' ' + 'Content: ' + content['text']
+                content = json.loads(index_reader.doc(hit.docid).raw())
+                if "title" in content:
+                    content = (
+                        "Title: " + content["title"] + " " + "Content: " + content["text"]
+                    )
+                elif "contents" in content:
+                    content = content["contents"]
                 else:
-                    content = content['contents']
+                    content = content["passage"]
                 content = ' '.join(content.split())
                 ranks[-1]['hits'].append({
                     'content': content,
-                    'qid': qid, 'docid': hit.docid, 'rank': rank, 'score': hit.score})
+                    'qid': qid,
+                    'docid': hit.docid,
+                    'rank': rank,
+                    'score': hit.score
+                })
     return ranks
 
 
@@ -162,58 +174,67 @@ def run_embedding_rerank(retrieval_results, model):
     return rerank_results
 
 
-def eval_dataset(dataset, retriver, reranker, reranker_type=None, topk=100):
+def eval_dataset(dataset, retriever, reranker, reranker_type=None, topk=100):
     print('#' * 20)
     print(f'Evaluation on {dataset}')
     print('#' * 20)
 
-    retrieval_results_file = f'results/{dataset}_retrival_{retriver}_top{topk}.jsonl'
+    retrieval_results_file = f'results/{dataset}_retrival_{retriever}_top{topk}.jsonl'
     if os.path.exists(retrieval_results_file):
         with open(retrieval_results_file) as f:
             retrieval_results = [json.loads(line) for line in f]
     else:
-        # Retrieve passages using pyserini BM25.
-        try:
-            searcher = LuceneSearcher.from_prebuilt_index(INDEX[dataset])
-            topics = get_topics(TOPICS[dataset] if dataset != 'dl20' else 'dl20')
-            qrels = get_qrels(TOPICS[dataset])
-            retrieval_results = run_retriever(topics, searcher, qrels, topk=topk)
-            write_retrival_results(retrieval_results, f'results/{dataset}_retrival_bm25_top{topk}.jsonl')
-        except:
-            print(f'Failed to retrieve passages for {dataset}')
-            return
+        if retriever == 'bm25':
+            searcher = LuceneSearcher.from_prebuilt_index(INDEX[retriever][dataset])
+            index_reader = IndexReader.from_prebuilt_index(INDEX[retriever][dataset])
+        elif retriever == 'splade++ed':
+            searcher = LuceneImpactSearcher.from_prebuilt_index(
+                INDEX[retriever][dataset],
+                query_encoder='SpladePlusPlusEnsembleDistil',
+                min_idf=0,
+                encoder_type='onnx'
+            )
+            index_reader = IndexReader.from_prebuilt_index(INDEX["bm25"][dataset])
+        else:
+            raise NotImplementedError(f'Retriever {retriever} is not supported')
+
+        topics = get_topics(TOPICS[dataset] if dataset != 'dl20' else 'dl20')
+        qrels = get_qrels(TOPICS[dataset])
+        retrieval_results = run_retriever(topics, searcher, index_reader, qrels, topk=topk)
+        write_retrival_results(
+            retrieval_results, f'results/{dataset}_retrival_{retriever}_top{topk}.jsonl')
 
     # Rerank
     if reranker is None or reranker_type is None:
         rerank_results = retrieval_results
-    elif reranker and reranker_type == "embedding":
+    elif reranker and reranker_type == 'embedding':
         tokenizer = AutoTokenizer.from_pretrained(reranker)
         model = SentenceTransformer(reranker, trust_remote_code=True)
         rerank_results = run_embedding_rerank(retrieval_results, model)
-    elif reranker and reranker_type == "cross":
+    elif reranker and reranker_type == 'cross':
         tokenizer = AutoTokenizer.from_pretrained(reranker)
         model = AutoModelForSequenceClassification.from_pretrained(
             reranker, num_labels=1, trust_remote_code=True)
         rerank_results = run_cross_rerank(retrieval_results, model, tokenizer)
     else:
-        raise NotImplementedError(f"Reranker type {reranker_type} is not supported")
-    # write_retrival_results(rerank_results, f'results/{dataset}_rerank_{reranker}_top{topk}.jsonl')
-    
+        raise NotImplementedError(f'Reranker type {reranker_type} is not supported')
 
     # Evaluate nDCG@10
     output_file = tempfile.NamedTemporaryFile(delete=False).name
     write_eval_file(rerank_results, output_file)
     EvalFunction.eval(['-c', '-m', 'ndcg_cut.10', TOPICS[dataset], output_file])
     # Rename the output file to a better name
-    shutil.move(output_file, f'results/eval_{dataset}_{retriver}_{reranker.split("/")[-1]}_top{topk}.txt')
+    if reranker:
+        reranker = reranker.split('/')[-1]
+    shutil.move(output_file, f'results/eval_{dataset}_{retriever}_{reranker}_top{topk}.txt')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--retriver', type=str, default='bm25', choices=['bm25', 'splade++ed'])
+    parser.add_argument('--retriever', type=str, default='bm25', choices=['bm25', 'splade++ed'])
     parser.add_argument('--reranker', type=str, default=None)
     parser.add_argument('--reranker-type', type=str, default=None)
     parser.add_argument('--topk', type=int, default=100)
     args = parser.parse_args()
-    eval_dataset(args.dataset, args.retriver, args.reranker, args.reranker_type, args.topk)
+    eval_dataset(args.dataset, args.retriever, args.reranker, args.reranker_type, args.topk)
