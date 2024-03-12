@@ -14,8 +14,8 @@ class EvalFunction:
     @staticmethod
     def trunc(qrels, run):
         qrels = get_qrels_file(qrels)
-        run = pd.read_csv(run, delim_whitespace=True, header=None)
-        qrels = pd.read_csv(qrels, delim_whitespace=True, header=None)
+        run = pd.read_csv(run, sep='\s+', header=None)
+        qrels = pd.read_csv(qrels, sep='\s+', header=None)
         run[0] = run[0].astype(str)
         qrels[0] = qrels[0].astype(str)
 
