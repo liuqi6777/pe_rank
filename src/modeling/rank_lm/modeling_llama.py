@@ -6,7 +6,7 @@ from transformers.file_utils import ModelOutput
 
 from modeling.model import ELMMetaModel
 from modeling.meta import MetaLM
-from modeling.rank_lm.loss import basic_rank_loss
+from modeling.rank_lm.loss import RankingLoss
 
 
 class EmbedLlamaConfig(LlamaConfig):
@@ -35,6 +35,8 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         self.model = EmbedLlamaModel(config)
         self.config = config
         self.post_init()
+
+        self.loss_function = RankingLoss()
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -95,7 +97,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
             return_dict=return_dict,
         )
         ranking = extra_texts_inputs["ranking"]
-        loss, logits = basic_rank_loss(outputs[0], extra_embeddings, labels, ranking)
+        loss, logits = self.loss_function(outputs[0], extra_embeddings, labels, ranking)
         return RankingOutput(
             loss=loss,
             logits=logits,
