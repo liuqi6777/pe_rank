@@ -36,7 +36,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         self.config = config
         self.post_init()
 
-        self.loss_function = RankingLoss()
+        self.loss_function = RankingLoss(weighted=True)
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
