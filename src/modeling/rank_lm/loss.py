@@ -1,6 +1,5 @@
 import torch
-from itertools import product
-from loguru import logger
+from typing import Optional
 from torch import nn, Tensor, LongTensor
 
 from constants import IGNORE_TOKEN_ID
@@ -30,7 +29,8 @@ def make_label_mask(ranking: LongTensor) -> LongTensor:
 
 def make_mask_with_labels(
     labels: LongTensor, 
-    ranking: LongTensor
+    ranking: LongTensor,
+    weighted: Optional[str] = None
 ) -> tuple[LongTensor, LongTensor, Tensor]:
     assert labels.shape[0] == ranking.shape[0]
     assert labels.shape[1] >= ranking.shape[1]
@@ -44,13 +44,28 @@ def make_mask_with_labels(
         assert (labels[i] != IGNORE_TOKEN_ID).sum() == ranking.shape[1]
         label_mask[i, labels[i] != IGNORE_TOKEN_ID] = make_label_mask(ranking[i])
         ranking_mask[i, labels[i] != IGNORE_TOKEN_ID] = make_ranking_mask(ranking[i])
-        weights[i, labels[i] != IGNORE_TOKEN_ID] = 1 / torch.arange(
-            1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float)
+        
+        if weighted is None:
+            continue
+        elif weighted == "ce_loss":
+            mask = torch.zeros_like(ranking[i], device=labels.device, dtype=torch.float)
+            mask[0] = 1
+            weights[i, labels[i] != IGNORE_TOKEN_ID] = mask
+        elif weighted == "weighted_1":
+            weights[i, labels[i] != IGNORE_TOKEN_ID] = 1 / torch.arange(
+                1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float)
+        elif weighted == "weighted_2":
+            index = torch.arange(ranking.shape[1], device=labels.device, dtype=torch.float)
+            weights[i, labels[i] != IGNORE_TOKEN_ID] = (index / index.sum()).flip(0)
+        elif weighted == "weighted_3":
+            weights[i, labels[i] != IGNORE_TOKEN_ID] = torch.arange(
+                ranking.shape[1], device=labels.device, dtype=torch.float).flip(0) / ranking.shape[1]
+
     return label_mask.contiguous(), ranking_mask.contiguous(), weights.contiguous()
 
 
 class RankingLoss(nn.Module):
-    def __init__(self, weighted: bool = False):
+    def __init__(self, weighted: Optional[str] = None):
         super().__init__()
         self.weighted = weighted
 
@@ -73,7 +88,6 @@ class RankingLoss(nn.Module):
         shift_logits[ranking_mask == 0] = float("-inf")
         z = torch.logsumexp(shift_logits, dim=-1)
         prob = torch.where(z == float("-inf"), torch.zeros_like(target), target - z)
-        # logger.debug(f"prob: {torch.exp(prob[0][prob[0] != 0]).detach().cpu().tolist()}")
         if not self.weighted:
             loss = -torch.sum(prob, dim=-1).mean()
         else:
