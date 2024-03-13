@@ -83,7 +83,8 @@ class RankingLoss(nn.Module):
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
 
-        label_mask, ranking_mask, weights = make_mask_with_labels(shift_labels, ranking)
+        label_mask, ranking_mask, weights = make_mask_with_labels(
+            shift_labels, ranking, weighted=self.weighted)
         target = (shift_logits * label_mask).sum(-1)
         shift_logits[ranking_mask == 0] = float("-inf")
         z = torch.logsumexp(shift_logits, dim=-1)
