@@ -62,7 +62,7 @@ class EvalFunction:
                 if 'Q0' not in first_line:
                     temp_file = tempfile.NamedTemporaryFile(delete=False).name
                     print('msmarco run detected. Converting to trec...')
-                    run = pd.read_csv(args[-1], delim_whitespace=True, header=None,
+                    run = pd.read_csv(args[-1], sep='\s+', header=None,
                                       names=['query_id', 'doc_id', 'rank'])
                     run['score'] = 1 / run['rank']
                     run.insert(1, 'Q0', 'Q0')
@@ -70,8 +70,8 @@ class EvalFunction:
                     run.to_csv(temp_file, sep='\t', header=None, index=None)
                     args[-1] = temp_file
 
-            run = pd.read_csv(args[-1], delim_whitespace=True, header=None)
-            qrels = pd.read_csv(args[-2], delim_whitespace=True, header=None)
+            run = pd.read_csv(args[-1], sep='\s+', header=None)
+            qrels = pd.read_csv(args[-2], sep='\s+', header=None)
 
             # cast doc_id column as string
             run[0] = run[0].astype(str)
