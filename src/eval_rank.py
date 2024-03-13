@@ -22,6 +22,7 @@ def eval_model(args):
         model_path=args.model_path,
         model_base=args.model_base,
         model_name="embed_llama",
+        device_map="cuda",
     )
     config = model.config
     model.to(torch.float16)
