@@ -113,11 +113,19 @@ def train():
     if model_args.encoder_name:
         model.get_model().initialize_modules(model_args)
 
-        encoder_tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_args.encoder_name,
-            cache_dir=training_args.cache_dir,
-            trust_remote_code=model_args.trust_remote_code,
-        )
+        if "lora" in model_args.encoder_name:
+            peft_config = LoraConfig.from_pretrained(model_args.encoder_name)
+            encoder_tokenizer = transformers.AutoTokenizer.from_pretrained(
+                peft_config.base_model_name_or_path,
+                cache_dir=training_args.cache_dir,
+                trust_remote_code=model_args.trust_remote_code,
+            )
+        else:
+            encoder_tokenizer = transformers.AutoTokenizer.from_pretrained(
+                model_args.encoder_name,
+                cache_dir=training_args.cache_dir,
+                trust_remote_code=model_args.trust_remote_code,
+            )
 
         model.config.tokenizer_padding_side = tokenizer.padding_side
         model.config.tokenizer_model_max_length = tokenizer.model_max_length

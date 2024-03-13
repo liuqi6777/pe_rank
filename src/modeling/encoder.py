@@ -2,6 +2,7 @@ import re
 import torch
 from torch import nn, Tensor
 from transformers import AutoModel
+from peft import PeftModel, PeftConfig
 
 
 class IdentityMap(nn.Module):
@@ -37,10 +38,23 @@ def build_projector(config):
     raise ValueError(f'Unknown projector type: {projector_type}')
 
 
+def get_peft_model(peft_model_name):
+    config = PeftConfig.from_pretrained(peft_model_name)
+    base_model = AutoModel.from_pretrained(config.base_model_name_or_path)
+    model = PeftModel.from_pretrained(base_model, peft_model_name)
+    model = model.merge_and_unload()
+    return model
+
+
 class Encoder(nn.Module):
     def __init__(self, model_name, config):
         super().__init__()
-        self.encoder = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+        if "lora" in model_name:
+            self.encoder = get_peft_model(model_name)
+        else:
+            self.encoder = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+        self.encoder.eval()
+
         self.config = self.encoder.config
         self.pooling = config.encoder_pooling
         self.requires_grad_(False)
@@ -62,8 +76,11 @@ class Encoder(nn.Module):
             outputs = self.encoder(**batch_inputs)
             if self.pooling == 'mean':
                 embeddings = self.mean_pooling(outputs.last_hidden_state, batch_inputs['attention_mask'])
-            else:
+            elif self.pooling == 'cls':
                 embeddings = outputs.last_hidden_state[:, 0]
+            elif self.pooling == 'last_token':
+                embeddings = outputs.last_hidden_state[torch.arange(batch_inputs['attention_mask'].shape[0]), 
+                                                       batch_inputs['attention_mask'].sum(-1) - 1]
             all_embeddings.append(embeddings)
         all_embeddings = torch.cat(all_embeddings, dim=0)
         all_embeddings = torch.nn.functional.normalize(all_embeddings, p=2, dim=-1)

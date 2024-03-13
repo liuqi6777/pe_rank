@@ -161,6 +161,12 @@ class LazyDataset(Dataset):
         print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
         self.encoder_tokenizer = encoder_tokenizer
+        if self.encoder_tokenizer.eos_token:
+            print("WARNING: will add eos token to the end of extra texts")
+            self.encoder_tokenizer.pad_token = self.encoder_tokenizer.eos_token
+            self.append_eos = True
+        else:
+            self.append_eos = False
         self.conversation_template = conversation_template
         self.raw_data = raw_data
         self.cached_data_dict = {}
@@ -192,6 +198,10 @@ class DatasetForCausalLM(LazyDataset):
             attention_mask=ret["attention_mask"][0],
         )
         if "extra_texts" in self.raw_data[i]:
+            if self.append_eos:
+                self.raw_data[i]["extra_texts"] = [
+                    f"{text}{self.encoder_tokenizer.eos_token}" for text in self.raw_data[i]["extra_texts"]
+                ]
             extra_text_inputs = self.encoder_tokenizer(
                 self.raw_data[i]["extra_texts"],
                 return_tensors="pt",
@@ -224,6 +234,10 @@ class DatasetForRanking(LazyDataset):
             ranking=ranking,
         )
         if "extra_texts" in self.raw_data[i]:
+            if self.append_eos:
+                self.raw_data[i]["extra_texts"] = [
+                    f"{text}{self.encoder_tokenizer.eos_token}" for text in self.raw_data[i]["extra_texts"]
+                ]
             extra_text_inputs = self.encoder_tokenizer(
                 self.raw_data[i]["extra_texts"],
                 return_tensors="pt",
