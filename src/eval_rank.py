@@ -82,6 +82,8 @@ def eval_model(args):
 
     print(conversations[0])
 
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
     input_ids = tokenizer(
         conversations,
         return_tensors="pt",
