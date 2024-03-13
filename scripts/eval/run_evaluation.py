@@ -27,7 +27,7 @@ INDEX = {
         'nfc': 'beir-v1.0.0-nfcorpus.flat',
         'quora': 'beir-v1.0.0-quora.flat',
         'dbpedia': 'beir-v1.0.0-dbpedia-entity.flat',
-        'fever': 'beir-v1.0.0-fever-flat',
+        'fever': 'beir-v1.0.0-fever.flat',
         'robust04': 'beir-v1.0.0-robust04.flat',
         'signal': 'beir-v1.0.0-signal1m.flat',
         'nq': 'beir-v1.0.0-nq.flat',
