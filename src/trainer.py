@@ -23,7 +23,7 @@ class Trainer(HFTrainer):
                 self.model.config.save_pretrained(output_dir)
                 torch.save(weight_to_save, os.path.join(output_dir, f'projector.bin'))
         else:
-            super()._save_checkpoint(model.get_model(), trial, metrics)
+            super()._save_checkpoint(model, trial, metrics)
 
     def _save(self, output_dir=None, state_dict=None):
         if getattr(self.args, 'tune_mlp_adapter', False) and getattr(self.args, 'freeze_backbone', False):
