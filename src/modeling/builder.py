@@ -68,12 +68,18 @@ def load_pretrained_model(
                 non_lora_trainables = torch.load(os.path.join(model_path, 'non_lora_trainables.bin'), map_location='cpu')
             else:
                 non_lora_trainables = load_from_hf(model_path, 'non_lora_trainables.bin')
-            non_lora_trainables = {(k[11:] if k.startswith(
-                'base_model.') else k): v for k, v in non_lora_trainables.items()}
+            non_lora_trainables = {(k[11:] if k.startswith('base_model.') else k): v 
+                                   for k, v in non_lora_trainables.items()}
             if any(k.startswith('model.model.') for k in non_lora_trainables):
                 non_lora_trainables = {(k[6:] if k.startswith('model.') else k): v
                                        for k, v in non_lora_trainables.items()}
             model.load_state_dict(non_lora_trainables, strict=False)
+
+            projector_weights = torch.load(os.path.join(model_path, 'projector.bin'), map_location='cpu')
+            projector_weights = {k[17:] if k.startswith('base_model.model.') else k: v
+                                 for k, v in projector_weights.items()}
+            projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
+            model.load_state_dict(projector_weights, strict=False)
 
             print('Loading LoRA weights...')
             model = PeftModel.from_pretrained(model, model_path)
