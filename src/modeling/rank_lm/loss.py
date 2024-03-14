@@ -55,11 +55,8 @@ def make_mask_with_labels(
             weights[i, labels[i] != IGNORE_TOKEN_ID] = 1 / torch.arange(
                 1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float)
         elif weighted == "weighted_2":
-            index = torch.arange(ranking.shape[1], device=labels.device, dtype=torch.float)
-            weights[i, labels[i] != IGNORE_TOKEN_ID] = (index / index.sum()).flip(0)
-        elif weighted == "weighted_3":
             weights[i, labels[i] != IGNORE_TOKEN_ID] = torch.arange(
-                ranking.shape[1], device=labels.device, dtype=torch.float).flip(0) / ranking.shape[1]
+                1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float).flip(0) / ranking.shape[1]
 
     return label_mask.contiguous(), ranking_mask.contiguous(), weights.contiguous()
 
