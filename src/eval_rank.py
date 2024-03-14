@@ -26,6 +26,7 @@ def eval_model(args):
     )
     config = model.config
     model.to(torch.float16)
+    model.eval()
 
     encoder_tokenizer = AutoTokenizer.from_pretrained(config.encoder_name)
 

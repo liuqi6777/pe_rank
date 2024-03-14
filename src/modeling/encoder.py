@@ -53,7 +53,6 @@ class Encoder(nn.Module):
             self.encoder = get_peft_model(model_name)
         else:
             self.encoder = AutoModel.from_pretrained(model_name, trust_remote_code=True)
-        self.encoder.eval()
 
         self.config = self.encoder.config
         self.pooling = config.encoder_pooling
