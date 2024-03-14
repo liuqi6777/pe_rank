@@ -62,9 +62,10 @@ def make_mask_with_labels(
 
 
 class RankingLoss(nn.Module):
-    def __init__(self, weighted: Optional[str] = None):
+    def __init__(self, weighted: Optional[str] = None, temperature: float = 1.0):
         super().__init__()
         self.weighted = weighted
+        self.temperature = temperature
 
     def forward(
         self,
@@ -74,7 +75,7 @@ class RankingLoss(nn.Module):
         ranking: LongTensor
     ) -> tuple[Tensor, Tensor]:
         hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
-        logits = hidden_states @ text_embeddings.permute(0, 2, 1)
+        logits = (hidden_states @ text_embeddings.permute(0, 2, 1)) / self.temperature
         
         # Shift so that tokens < n predict n
         shift_logits = logits[..., :-1, :].contiguous()
