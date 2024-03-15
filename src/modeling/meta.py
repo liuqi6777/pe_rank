@@ -20,6 +20,9 @@ class MetaLM:
     def get_projector(self):
         return self.get_model().get_projector()
 
+    def get_encoder_head(self):
+        return self.get_model().get_encoder_head()
+
     def prepare_inputs_labels_embeddings(
         self,
         input_ids: Optional[Tensor],
@@ -28,7 +31,7 @@ class MetaLM:
         past_key_values: Optional[tuple],
         labels: Optional[Tensor],
         **extra_texts_inputs: dict[str, Tensor]
-    ) -> tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[tuple], Optional[Tensor], Optional[Tensor]]:
+    ):
         if self.get_model().get_encoder() is None or "extra_text_input_ids" not in extra_texts_inputs:
             return input_ids, position_ids, attention_mask, past_key_values, None, labels, None, None
 
@@ -46,18 +49,22 @@ class MetaLM:
             assert num_extra_texts <= extra_text_input_ids.shape[0]
             extra_text_input_ids = extra_text_input_ids[:num_extra_texts]
             extra_text_attention_masks = extra_text_attention_masks[:num_extra_texts]
-            text_embeddings = self.get_model().encode_texts(
+            project_as_token_embeddings, project_text_embeddings = self.get_model().encode_texts(
                 input_ids=extra_text_input_ids, attention_mask=extra_text_attention_masks)
-            all_text_embeddings.append(text_embeddings[:(cur_input_ids == PLACEHOLDER_ID).sum().item(), :])
 
             cur_input_embeds = self.get_model().embed_tokens(cur_input_ids.to(self.get_model().device))
             new_input_embeds = cur_input_embeds.clone()
-            text_embeddings = text_embeddings.to(new_input_embeds.device)
-            new_input_embeds[(cur_input_ids == PLACEHOLDER_ID) | (cur_input_ids == RANK_TOKEN_ID)] = text_embeddings.to(
-                cur_input_embeds.dtype)
+            project_as_token_embeddings = project_as_token_embeddings.to(new_input_embeds.device)
+
+            text_as_token_indices = (cur_input_ids == PLACEHOLDER_ID) | (cur_input_ids == RANK_TOKEN_ID)
+            new_input_embeds[text_as_token_indices] = project_as_token_embeddings.to(cur_input_embeds.dtype)
             input_embeddings.append(new_input_embeds)
-            
-            extra_text_position = cur_input_ids == PLACEHOLDER_ID
+
+            project_text_embeddings = project_text_embeddings.to(new_input_embeds.device)
+            all_text_embeddings.append(
+                project_text_embeddings[:(cur_input_ids == PLACEHOLDER_ID).sum().item(), :])
+
+            extra_text_position = (cur_input_ids == PLACEHOLDER_ID)
             extra_text_positions.append(extra_text_position)
 
         input_embeddings = torch.stack(input_embeddings)

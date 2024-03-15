@@ -68,7 +68,7 @@ def make_mask_with_labels(
 
 
 class ListNetLoss(nn.Module):
-    def __init__(self, temperature: float = 1.0):
+    def __init__(self, temperature: float = 0.05):
         super().__init__()
         self.temperature = temperature
 
@@ -96,7 +96,7 @@ class ListNetLoss(nn.Module):
 
 
 class ListMLELoss(nn.Module):
-    def __init__(self, weighted: Optional[str] = None, temperature: float = 1.0):
+    def __init__(self, weighted: Optional[str] = None, temperature: float = 0.05):
         super().__init__()
         self.weighted = weighted
         self.temperature = temperature

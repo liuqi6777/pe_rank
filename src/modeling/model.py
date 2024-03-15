@@ -1,4 +1,5 @@
 import torch
+from copy import deepcopy
 
 from modeling.encoder import Encoder, build_projector
 
@@ -8,15 +9,22 @@ class ELMMetaModel:
         super().__init__(config)
         self.config = config
 
-        if hasattr(config, 'encoder_name') and not getattr(config, 'freeze_backbone', False):
+        if hasattr(config, 'encoder_name'):
             self.encoder = Encoder(config.encoder_name, config)
             self.projector = build_projector(config)
+            self.set_encoder_head()
 
     def get_encoder(self):
         return getattr(self, 'encoder', None)
 
     def get_projector(self):
         return getattr(self, 'projector', None)
+
+    def get_encoder_head(self):
+        return getattr(self, 'encoder_head', None)
+
+    def set_encoder_head(self):
+        self.encoder_head = deepcopy(self.projector)
 
     def initialize_modules(self, model_args):
         encoder_name = model_args.encoder_name
@@ -40,16 +48,20 @@ class ELMMetaModel:
                 p.requires_grad = True
 
         if pretrain_mlp_adapter is not None:
-            projector_weights = torch.load(
-                pretrain_mlp_adapter, map_location='cpu')
+            projector_weights = torch.load(pretrain_mlp_adapter, map_location='cpu')
 
             def get_w(weights, keyword):
                 return {k.split(keyword + '.')[1]: v for k, v in weights.items() if keyword in k}
 
-            self.projector.load_state_dict(
-                get_w(projector_weights, 'projector'))
+            self.projector.load_state_dict(get_w(projector_weights, 'projector'))
+
+            print("Initialized encoder head with pre-trained projector weights")
+            self.set_encoder_head()
 
     def encode_texts(self, **inputs: dict):
         embeddings = self.get_encoder()(**inputs)
-        embeddings = self.get_projector()(embeddings)
-        return embeddings
+        project_as_token_embeddings = self.get_projector()(embeddings)
+        # no need to normalize to align with the original token embeddings
+        project_text_embeddings = self.get_encoder_head()(embeddings)
+        project_text_embeddings = torch.nn.functional.normalize(project_text_embeddings, p=2, dim=-1)
+        return project_as_token_embeddings, project_text_embeddings
