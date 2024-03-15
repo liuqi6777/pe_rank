@@ -4,6 +4,7 @@ runs/
 wandb/
 results/
 data/
+indexes/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
