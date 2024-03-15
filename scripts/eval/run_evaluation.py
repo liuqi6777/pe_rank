@@ -124,7 +124,7 @@ def run_retriever(topics, searcher, index_reader, qrels=None, topk=100, qid=None
                     'qid': qid,
                     'docid': hit.docid,
                     'rank': rank,
-                    'score': hit.score
+                    'score': hit.score if isinstance(hit.score, float) else hit.score.item()
                 })
     return ranks
 
@@ -218,11 +218,12 @@ def eval_dataset(args):
                 encoder_type='onnx'
             )
         else:
+            encoder = AutoQueryEncoder(retriever, pooling=args.dense_encoder_pooling, l2_norm=True)
             retriever = retriever.split('/')[-1]  # maybe hf model
             index_dir = os.path.join('indexes', f'{INDEX["dense"][dataset]}.{retriever}')
             searcher = FaissSearcher(
                 index_dir=index_dir,
-                query_encoder=AutoQueryEncoder(retriever, pooling=args.dense_encoder_pooling, l2_norm=True)
+                query_encoder=encoder
             )
 
         index_reader = IndexReader.from_prebuilt_index(INDEX["bm25"][dataset])
