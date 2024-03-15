@@ -203,7 +203,7 @@ def eval_dataset(args):
     print(f'Evaluation on {dataset}')
     print('#' * 20)
 
-    retrieval_results_file = f'results/{dataset}_retrival_{retriever.split('/')[-1]}_top{topk}.jsonl'
+    retrieval_results_file = f'results/{dataset}_retrival_{retriever}_top{topk}.jsonl'
     if os.path.exists(retrieval_results_file):
         with open(retrieval_results_file) as f:
             retrieval_results = [json.loads(line) for line in f]
