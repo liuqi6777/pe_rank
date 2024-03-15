@@ -54,6 +54,26 @@ INDEX = {
         'nq': 'beir-v1.0.0-nq.splade-pp-ed',
         'cfever': 'beir-v1.0.0-climate-fever.splade-pp-ed',
         'hotpotqa': 'beir-v1.0.0-hotpotqa.splade-pp-ed'
+    },
+    'dense': {
+        'dl19': 'msmarco-v1-passage',
+        'dl20': 'msmarco-v1-passage',
+        'covid': 'beir-v1.0.0-trec-covid',
+        'arguana': 'beir-v1.0.0-arguana',
+        'touche': 'beir-v1.0.0-webis-touche2020',
+        'news': 'beir-v1.0.0-trec-news',
+        'scifact': 'beir-v1.0.0-scifact',
+        'fiqa': 'beir-v1.0.0-fiqa',
+        'scidocs': 'beir-v1.0.0-scidocs',
+        'nfc': 'beir-v1.0.0-nfcorpus',
+        'quora': 'beir-v1.0.0-quora',
+        'dbpedia': 'beir-v1.0.0-dbpedia-entity',
+        'fever': 'beir-v1.0.0-fever',
+        'robust04': 'beir-v1.0.0-robust04',
+        'signal': 'beir-v1.0.0-signal1m',
+        'nq': 'beir-v1.0.0-nq',
+        'cfever': 'beir-v1.0.0-climate-fever',
+        'hotpotqa': 'beir-v1.0.0-hotpotqa'
     }
 }
 
@@ -198,9 +218,8 @@ def eval_dataset(args):
                 encoder_type='onnx'
             )
         else:
-            print("Using custom dense vector indexes")
             retriever = retriever.split('/')[-1]  # maybe hf model
-            index_dir = os.path.join('indexes', dataset, retriever)
+            index_dir = os.path.join('indexes', f'{INDEX["dense"][dataset]}.{retriever}')
             searcher = FaissSearcher(
                 index_dir=index_dir,
                 query_encoder=AutoQueryEncoder(retriever, pooling=args.dense_encoder_pooling, l2_norm=True)
