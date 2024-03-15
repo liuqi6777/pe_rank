@@ -198,8 +198,9 @@ def eval_dataset(args):
                 encoder_type='onnx'
             )
         else:
-            print("Using dense vector indexes")
-            index_dir = os.path.join('indexes', retriever.split('/')[-1])
+            print("Using custom dense vector indexes")
+            retriever = retriever.split('/')[-1]  # maybe hf model
+            index_dir = os.path.join('indexes', dataset, retriever)
             searcher = FaissSearcher(
                 index_dir=index_dir,
                 query_encoder=AutoQueryEncoder(retriever, pooling=args.dense_encoder_pooling, l2_norm=True)
