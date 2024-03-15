@@ -1,4 +1,5 @@
 import torch
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaModel, LlamaPreTrainedModel
@@ -6,7 +7,7 @@ from transformers.file_utils import ModelOutput
 
 from modeling.model import ELMMetaModel
 from modeling.meta import MetaLM
-from modeling.rank_lm.loss import RankingLoss
+from modeling.rank_lm.loss import ListMLELoss
 
 
 class EmbedLlamaConfig(LlamaConfig):
@@ -36,7 +37,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         self.config = config
         self.post_init()
 
-        self.loss_function = RankingLoss(weighted="weighted_1")
+        self.loss_function = ListMLELoss(weighted="weighted_1")
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -161,13 +162,9 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
             )
             hidden_states = outputs[0].to(extra_text_embeddings.device)
             hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
-            extra_text_output_embeddings = hidden_states[0, extra_text_positions]
             logits = (hidden_states[0, -1] @ extra_text_embeddings[0].T).flatten()
-            # logits = (hidden_states[0, -1] @ extra_text_output_embeddings.T).flatten()
-            
             # rankings = (torch.argsort(logits, descending=True) + 1).detach().cpu().tolist()
             # break
-            
             logits[ranking_mask == 1] = -float("inf")
             ranking = torch.argmax(logits).item()
             ranking_mask[ranking] = 1
