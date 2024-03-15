@@ -6,7 +6,8 @@ import shutil
 import torch
 import numpy as np
 from pyserini.index import IndexReader
-from pyserini.search import LuceneSearcher, LuceneImpactSearcher, get_topics, get_qrels
+from pyserini.search import LuceneSearcher, LuceneImpactSearcher, FaissSearcher, get_topics, get_qrels
+from pyserini.search.faiss import AutoQueryEncoder
 from trec_eval import EvalFunction
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel, AutoModelForSequenceClassification
@@ -174,7 +175,10 @@ def run_embedding_rerank(retrieval_results, model):
     return rerank_results
 
 
-def eval_dataset(dataset, retriever, reranker, reranker_type=None, topk=100):
+def eval_dataset(args):
+    
+    dataset, retriever, reranker, topk = args.dataset, args.retriever, args.reranker, args.topk
+    
     print('#' * 20)
     print(f'Evaluation on {dataset}')
     print('#' * 20)
@@ -186,7 +190,6 @@ def eval_dataset(dataset, retriever, reranker, reranker_type=None, topk=100):
     else:
         if retriever == 'bm25':
             searcher = LuceneSearcher.from_prebuilt_index(INDEX[retriever][dataset])
-            index_reader = IndexReader.from_prebuilt_index(INDEX[retriever][dataset])
         elif retriever == 'splade++ed':
             searcher = LuceneImpactSearcher.from_prebuilt_index(
                 INDEX[retriever][dataset],
@@ -194,10 +197,15 @@ def eval_dataset(dataset, retriever, reranker, reranker_type=None, topk=100):
                 min_idf=0,
                 encoder_type='onnx'
             )
-            index_reader = IndexReader.from_prebuilt_index(INDEX["bm25"][dataset])
         else:
-            raise NotImplementedError(f'Retriever {retriever} is not supported')
+            print("Using dense vector indexes")
+            index_dir = os.path.join('indexes', retriever.split('/')[-1])
+            searcher = FaissSearcher(
+                index_dir=index_dir,
+                query_encoder=AutoQueryEncoder(retriever, pooling=args.dense_encoder_pooling, l2_norm=True)
+            )
 
+        index_reader = IndexReader.from_prebuilt_index(INDEX["bm25"][dataset])
         topics = get_topics(TOPICS[dataset] if dataset != 'dl20' else 'dl20')
         qrels = get_qrels(TOPICS[dataset])
         retrieval_results = run_retriever(topics, searcher, index_reader, qrels, topk=topk)
@@ -205,19 +213,19 @@ def eval_dataset(dataset, retriever, reranker, reranker_type=None, topk=100):
             retrieval_results, f'results/{dataset}_retrival_{retriever}_top{topk}.jsonl')
 
     # Rerank
-    if reranker is None or reranker_type is None:
+    if reranker is None or args.reranker_type is None:
         rerank_results = retrieval_results
-    elif reranker and reranker_type == 'embedding':
+    elif reranker and args.reranker_type == 'embedding':
         tokenizer = AutoTokenizer.from_pretrained(reranker)
         model = SentenceTransformer(reranker, trust_remote_code=True)
         rerank_results = run_embedding_rerank(retrieval_results, model)
-    elif reranker and reranker_type == 'cross':
+    elif reranker and args.reranker_type == 'cross':
         tokenizer = AutoTokenizer.from_pretrained(reranker)
         model = AutoModelForSequenceClassification.from_pretrained(
             reranker, num_labels=1, trust_remote_code=True)
         rerank_results = run_cross_rerank(retrieval_results, model, tokenizer)
     else:
-        raise NotImplementedError(f'Reranker type {reranker_type} is not supported')
+        raise NotImplementedError(f'Reranker type {args.reranker_type} is not supported')
 
     # Evaluate nDCG@10
     output_file = tempfile.NamedTemporaryFile(delete=False).name
@@ -232,9 +240,12 @@ def eval_dataset(dataset, retriever, reranker, reranker_type=None, topk=100):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--retriever', type=str, default='bm25', choices=['bm25', 'splade++ed'])
-    parser.add_argument('--reranker', type=str, default=None)
-    parser.add_argument('--reranker-type', type=str, default=None)
-    parser.add_argument('--topk', type=int, default=100)
+    retriever = parser.add_argument_group('retriever')
+    retriever.add_argument('--retriever', type=str, default='bm25')
+    retriever.add_argument('--dense-encoder-pooling', type=str, default='mean')
+    retriever.add_argument('--topk', type=int, default=100)
+    reranker = parser.add_argument_group('reranker')
+    reranker.add_argument('--reranker', type=str, default=None)
+    reranker.add_argument('--reranker-type', type=str, default=None)
     args = parser.parse_args()
-    eval_dataset(args.dataset, args.retriever, args.reranker, args.reranker_type, args.topk)
+    eval_dataset(args)
