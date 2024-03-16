@@ -12,7 +12,7 @@ class ELMMetaModel:
         if hasattr(config, 'encoder_name'):
             self.encoder = Encoder(config.encoder_name, config)
             self.projector = build_projector(config)
-            self.set_encoder_head()
+            # self.set_encoder_head()
 
     def get_encoder(self):
         return getattr(self, 'encoder', None)
@@ -24,6 +24,7 @@ class ELMMetaModel:
         return getattr(self, 'encoder_head', None)
 
     def set_encoder_head(self):
+        print("Initialized encoder head with pre-trained projector weights")
         self.encoder_head = deepcopy(self.projector)
 
     def initialize_modules(self, model_args):
@@ -54,14 +55,13 @@ class ELMMetaModel:
                 return {k.split(keyword + '.')[1]: v for k, v in weights.items() if keyword in k}
 
             self.projector.load_state_dict(get_w(projector_weights, 'projector'))
-
-            print("Initialized encoder head with pre-trained projector weights")
-            self.set_encoder_head()
+            # self.set_encoder_head()
 
     def encode_texts(self, **inputs: dict):
         embeddings = self.get_encoder()(**inputs)
         project_as_token_embeddings = self.get_projector()(embeddings)
-        # no need to normalize to align with the original token embeddings
-        project_text_embeddings = self.get_encoder_head()(embeddings)
-        project_text_embeddings = torch.nn.functional.normalize(project_text_embeddings, p=2, dim=-1)
+        # no need to normalize to align with the original token embedding space
+        # project_text_embeddings = self.get_encoder_head()(embeddings)
+        # project_text_embeddings = torch.nn.functional.normalize(project_text_embeddings, p=2, dim=-1)
+        project_text_embeddings = torch.nn.functional.normalize(project_as_token_embeddings, p=2, dim=-1)
         return project_as_token_embeddings, project_text_embeddings

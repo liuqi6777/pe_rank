@@ -79,7 +79,7 @@ def load_pretrained_model(
                                  for k, v in projector_weights.items()}
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
             model.load_state_dict(projector_weights, strict=False)
-            model.get_model().set_encoder_head()
+            # model.get_model().set_encoder_head()
 
             print('Loading LoRA weights...')
             model = PeftModel.from_pretrained(model, model_path)
@@ -103,7 +103,7 @@ def load_pretrained_model(
             projector_weights = torch.load(os.path.join(model_path, 'projector.bin'), map_location='cpu')
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
             model.load_state_dict(projector_weights, strict=False)
-            model.get_model().set_encoder_head()
+            # model.get_model().set_encoder_head()
         else:
             print(f'Loading model from {model_path}...')
             tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
@@ -115,7 +115,6 @@ def load_pretrained_model(
                 **kwargs
             )
             model.initialize_tokenizer(tokenizer)
-            model.get_model().set_encoder_head()
 
         model.resize_token_embeddings(len(tokenizer))
 
