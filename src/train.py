@@ -10,6 +10,7 @@ from arguments import ModelArguments, DataArguments, TrainingArguments, LoraArgu
 from data import make_data_module
 from modeling.causal_lm import EmbedLlamaForCausalLM
 from modeling.rank_lm import EmbedLlamaForRankLM
+from modeling.rank_lm.loss import set_loss_function
 from trainer import Trainer
 from utils import *
 
@@ -64,6 +65,7 @@ def train():
                 attn_implementation=training_args.attn_implementation,
                 torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
             )
+            set_loss_function(model, model_args.loss_type)
         else:
             raise ValueError(f"Invalid model type: {model_args.model_type}")
     else:

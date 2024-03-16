@@ -30,6 +30,7 @@ class ModelArguments:
         default="mean", metadata={"help": "mean or cls"})
     pretrain_mlp_adapter: Optional[str] = field(default=None)
     projector_type: Optional[str] = field(default='linear')
+    loss_type: Optional[str] = field(default='listnet-1')
 
 
 @dataclass

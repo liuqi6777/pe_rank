@@ -5,6 +5,19 @@ from torch import nn, Tensor, LongTensor
 from constants import IGNORE_TOKEN_ID
 
 
+def set_loss_function(model: nn.Module, loss_type: str):
+    print(f"Setting loss function: {loss_type}")
+    loss_type, temperature = loss_type.split("-")
+    if loss_type == "listnet":
+        loss_function = ListNetLoss(float(temperature))
+    elif "listmle" in loss_type:
+        weighted = f"weighted_{loss_type[-1]}" if len(loss_type) > 7 else None
+        loss_function = ListMLELoss(weighted=weighted, temperature=float(temperature))
+    else:
+        raise ValueError(f"Invalid loss type: {loss_type}")
+    setattr(model, "loss_function", loss_function)
+
+
 def rank_minus_one(ranking: LongTensor) -> LongTensor:
     if ranking.min() == 1:
         ranking = ranking - 1
@@ -68,7 +81,7 @@ def make_mask_with_labels(
 
 
 class ListNetLoss(nn.Module):
-    def __init__(self, temperature: float = 0.05):
+    def __init__(self, temperature: float = 1.0):
         super().__init__()
         self.temperature = temperature
 
@@ -96,7 +109,7 @@ class ListNetLoss(nn.Module):
 
 
 class ListMLELoss(nn.Module):
-    def __init__(self, weighted: Optional[str] = None, temperature: float = 0.05):
+    def __init__(self, weighted: Optional[str] = None, temperature: float = 1.0):
         super().__init__()
         self.weighted = weighted
         self.temperature = temperature
