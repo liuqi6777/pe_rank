@@ -1,126 +1,90 @@
-import os
-import re
-import subprocess
-import sys
-import platform
-import pandas as pd
+import argparse
 import tempfile
-
+import pandas as pd
+import pytrec_eval
 from pyserini.search import get_qrels_file
-from pyserini.util import download_evaluation_script
+
+
+def trec_eval(
+    qrels: dict[str, dict[str, int]],
+    results: dict[str, dict[str, float]],
+    k_values: tuple[int] = (10, 50, 100, 200, 1000)
+) -> dict[str, float]:
+    ndcg, _map, recall = {}, {}, {}
+
+    for k in k_values:
+        _map[f"MAP@{k}"] = 0.0
+        ndcg[f"NDCG@{k}"] = 0.0
+        recall[f"Recall@{k}"] = 0.0
+
+    map_string = "map_cut." + ",".join([str(k) for k in k_values])
+    ndcg_string = "ndcg_cut." + ",".join([str(k) for k in k_values])
+    recall_string = "recall." + ",".join([str(k) for k in k_values])
+
+    evaluator = pytrec_eval.RelevanceEvaluator(
+        qrels, {map_string, ndcg_string, recall_string})
+    scores = evaluator.evaluate(results)
+
+    for query_id in scores:
+        for k in k_values:
+            _map[f"MAP@{k}"] += scores[query_id]["map_cut_" + str(k)]
+            ndcg[f"NDCG@{k}"] += scores[query_id]["ndcg_cut_" + str(k)]
+            recall[f"Recall@{k}"] += scores[query_id]["recall_" + str(k)]
+
+    def _normalize(m: dict) -> dict:
+        return {k: round(v / len(scores), 4) for k, v in m.items()}
+
+    _map = _normalize(_map)
+    ndcg = _normalize(ndcg)
+    recall = _normalize(recall)
+
+    all_metrics = {}
+    for mt in [_map, ndcg, recall]:
+        all_metrics.update(mt)
+
+    return all_metrics
+
+
+def pretty_print_metrics(metrics: dict[str, float]):
+    for metric, value in metrics.items():
+        if len(metric) < 8:
+            print(f"{metric}\t\t{value}")
+        else:
+            print(f"{metric}\t{value}")
 
 
 class EvalFunction:
+
     @staticmethod
     def trunc(qrels, run):
         qrels = get_qrels_file(qrels)
+        # print(qrels)
         run = pd.read_csv(run, sep='\s+', header=None)
         qrels = pd.read_csv(qrels, sep='\s+', header=None)
         run[0] = run[0].astype(str)
         qrels[0] = qrels[0].astype(str)
-
         qrels = qrels[qrels[0].isin(run[0])]
         temp_file = tempfile.NamedTemporaryFile(delete=False).name
         qrels.to_csv(temp_file, sep='\t', header=None, index=None)
         return temp_file
 
     @staticmethod
-    def eval(args, trunc=True):
-        script_path = download_evaluation_script('trec_eval')
-        cmd_prefix = ['java', '-jar', script_path]
-        # args = sys.argv
-
-        # Option to discard non-judged hits in run file
-        judged_docs_only = ''
-        judged_result = []
-        cutoffs = []
-
-        if '-remove-unjudged' in args:
-            judged_docs_only = args.pop(args.index('-remove-unjudged'))
-
-        if any([i.startswith('judged.') for i in args]):
-            # Find what position the arg is in.
-            idx = [i.startswith('judged.') for i in args].index(True)
-            cutoffs = args.pop(idx)
-            cutoffs = list(map(int, cutoffs[7:].split(',')))
-            # Get rid of the '-m' before the 'judged.xxx' option
-            args.pop(idx - 1)
-
-        temp_file = ''
-
-        if len(args) > 1:
-            if trunc:
-                args[-2] = EvalFunction.trunc(args[-2], args[-1])
-                print('Trunc', args[-2])
-
-            if not os.path.exists(args[-2]):
-                args[-2] = get_qrels_file(args[-2])
-            if os.path.exists(args[-1]):
-                # Convert run to trec if it's on msmarco
-                with open(args[-1]) as f:
-                    first_line = f.readline()
-                if 'Q0' not in first_line:
-                    temp_file = tempfile.NamedTemporaryFile(delete=False).name
-                    print('msmarco run detected. Converting to trec...')
-                    run = pd.read_csv(args[-1], sep='\s+', header=None,
-                                      names=['query_id', 'doc_id', 'rank'])
-                    run['score'] = 1 / run['rank']
-                    run.insert(1, 'Q0', 'Q0')
-                    run['name'] = 'TEMPRUN'
-                    run.to_csv(temp_file, sep='\t', header=None, index=None)
-                    args[-1] = temp_file
-
-            run = pd.read_csv(args[-1], sep='\s+', header=None)
-            qrels = pd.read_csv(args[-2], sep='\s+', header=None)
-
-            # cast doc_id column as string
-            run[0] = run[0].astype(str)
-            qrels[0] = qrels[0].astype(str)
-
-            # Discard non-judged hits
-
-            if judged_docs_only:
-                if not temp_file:
-                    temp_file = tempfile.NamedTemporaryFile(delete=False).name
-                judged_indexes = pd.merge(run[[0, 2]].reset_index(), qrels[[0, 2]], on=[0, 2])['index']
-                run = run.loc[judged_indexes]
-                run.to_csv(temp_file, sep='\t', header=None, index=None)
-                args[-1] = temp_file
-            # Measure judged@cutoffs
-            for cutoff in cutoffs:
-                run_cutoff = run.groupby(0).head(cutoff)
-                judged = len(pd.merge(run_cutoff[[0, 2]], qrels[[0, 2]], on=[0, 2])) / len(run_cutoff)
-                metric_name = f'judged_{cutoff}'
-                judged_result.append(f'{metric_name:22}\tall\t{judged:.4f}')
-            cmd = cmd_prefix + args[1:]
-        else:
-            cmd = cmd_prefix
-
-        print(f'Running command: {cmd}')
-        shell = platform.system() == "Windows"
-        process = subprocess.Popen(cmd,
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE,
-                                   shell=shell)
-        stdout, stderr = process.communicate()
-        if stderr:
-            print(stderr.decode("utf-8"))
-
-        print('Results:')
-        print(stdout.decode("utf-8").rstrip())
-
-        for judged in judged_result:
-            print(judged)
-
-        if temp_file:
-            os.remove(temp_file)
+    def main(args_qrel, args_run):
+        args_qrel = EvalFunction.trunc(args_qrel, args_run)
+        with open(args_qrel, 'r') as f_qrel:
+            qrel = pytrec_eval.parse_qrel(f_qrel)
+        with open(args_run, 'r') as f_run:
+            run = pytrec_eval.parse_run(f_run)
+        all_metrics = trec_eval(qrel, run, k_values=(1, 5, 10, 20, 100))
+        pretty_print_metrics(all_metrics)
+        return all_metrics
 
 
-if __name__ == "__main__":
-    import argparse
+if __name__ == '__main__':
     from run_evaluation import TOPICS
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='dl19')
     parser.add_argument('--ranking', type=str, required=True)
     args = parser.parse_args()
-    EvalFunction.eval(['-c', '-m', 'ndcg_cut.10', TOPICS[args.dataset], args.ranking])
+    EvalFunction.main(TOPICS[args.dataset], args.ranking)

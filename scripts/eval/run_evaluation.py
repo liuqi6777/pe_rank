@@ -251,7 +251,7 @@ def eval_dataset(args):
     # Evaluate nDCG@10
     output_file = tempfile.NamedTemporaryFile(delete=False).name
     write_eval_file(rerank_results, output_file)
-    EvalFunction.eval(['-c', '-m', 'ndcg_cut.10', TOPICS[dataset], output_file])
+    EvalFunction.main(TOPICS[dataset], output_file)
     # Rename the output file to a better name
     if reranker:
         reranker = reranker.split('/')[-1]
