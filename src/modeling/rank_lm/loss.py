@@ -51,33 +51,27 @@ def make_mask_with_labels(
         labels.shape[0], labels.shape[1], ranking.shape[1], dtype=torch.long, device=labels.device)
     ranking_mask = torch.zeros(
         labels.shape[0], labels.shape[1], ranking.shape[1], dtype=torch.long, device=labels.device)
-    weights = torch.zeros(
-        labels.shape[0], labels.shape[1], dtype=torch.float, device=labels.device)
+    
     for i in range(ranking.shape[0]):
         assert (labels[i] != IGNORE_TOKEN_ID).sum() == ranking.shape[1]
         label_mask[i, labels[i] != IGNORE_TOKEN_ID] = make_label_mask(ranking[i])
         ranking_mask[i, labels[i] != IGNORE_TOKEN_ID] = make_ranking_mask(ranking[i])
-        
-        if weighted is None:
-            continue
-        elif weighted == "listnet":
-            mask = torch.zeros_like(ranking[i], device=labels.device, dtype=torch.float)
-            mask[0] = 1
-            weights[i, labels[i] != IGNORE_TOKEN_ID] = mask
-        elif weighted == "weighted_1":
-            weights[i, labels[i] != IGNORE_TOKEN_ID] = 1 / torch.arange(
-                1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float)
-        elif weighted == "weighted_2":
-            weights[i, labels[i] != IGNORE_TOKEN_ID] = torch.arange(
-                1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float).flip(0) / ranking.shape[1]
-        elif weighted == "weighted_3":
-            weights[i, labels[i] != IGNORE_TOKEN_ID] = 1 / torch.log(
-                torch.arange(2, ranking.shape[1] + 2, device=labels.device, dtype=torch.float))
-        elif weighted == "weighted_4":
-            weights[i, labels[i] != IGNORE_TOKEN_ID] = 1 / torch.pow(2, torch.arange(
-                ranking.shape[1], device=labels.device, dtype=torch.float))
+    
+    weights = torch.zeros(ranking.shape[1], dtype=torch.float, device=labels.device)
+    if weighted is None:
+        weights = 1
+    elif weighted == "listnet":
+        weights[0] = 1
+    elif weighted == "weighted_1":
+        weights = 1 / torch.arange(1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float)
+    elif weighted == "weighted_2":
+        weights = torch.arange(1, ranking.shape[1] + 1, device=labels.device, dtype=torch.float).flip(0) / ranking.shape[1]
+    elif weighted == "weighted_3":
+        weights = 1 / torch.log(torch.arange(2, ranking.shape[1] + 2, device=labels.device, dtype=torch.float))
+    elif weighted == "weighted_4":
+        weights = 1 / torch.pow(2, torch.arange(ranking.shape[1], device=labels.device, dtype=torch.float))
 
-    return label_mask.contiguous(), ranking_mask.contiguous(), weights.contiguous()
+    return label_mask.contiguous(), ranking_mask.contiguous(), weights.unsqueeze(0)
 
 
 class ListNetLoss(nn.Module):
@@ -100,11 +94,11 @@ class ListNetLoss(nn.Module):
         shift_labels = labels[..., 1:].contiguous()
 
         label_mask, ranking_mask, weights = make_mask_with_labels(shift_labels, ranking, weighted="listnet")
-        target = (shift_logits * label_mask).sum(-1)
+        labels = rank_minus_one(ranking).view(-1)
         shift_logits[ranking_mask == 0] = float("-inf")
-        z = torch.logsumexp(shift_logits, dim=-1)
-        prob = torch.where(z == float("-inf"), torch.zeros_like(target), target - z)
-        loss = -torch.sum(prob * weights, dim=-1).mean()
+        shift_logits = shift_logits[label_mask.sum(-1).bool()]
+        prob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], ranking.shape[1], -1)
+        loss = torch.sum(prob * weights, dim=-1).mean()
         return loss, logits
 
 
@@ -128,14 +122,10 @@ class ListMLELoss(nn.Module):
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
 
-        label_mask, ranking_mask, weights = make_mask_with_labels(
-            shift_labels, ranking, weighted=self.weighted)
-        target = (shift_logits * label_mask).sum(-1)
+        label_mask, ranking_mask, weights = make_mask_with_labels(shift_labels, ranking, weighted=self.weighted)
+        labels = rank_minus_one(ranking).view(-1)
         shift_logits[ranking_mask == 0] = float("-inf")
-        z = torch.logsumexp(shift_logits, dim=-1)
-        prob = torch.where(z == float("-inf"), torch.zeros_like(target), target - z)
-        if not self.weighted:
-            loss = -torch.sum(prob, dim=-1).mean()
-        else:
-            loss = -torch.sum(prob * weights, dim=-1).mean()
+        shift_logits = shift_logits[label_mask.sum(-1).bool()]
+        prob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], ranking.shape[1], -1)
+        loss = torch.sum(prob * weights, dim=-1).mean()
         return loss, logits
