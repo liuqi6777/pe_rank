@@ -121,6 +121,7 @@ def eval_model(args):
         else:
             output_file = f"results/eval_{dataset}_{args.retriever}_{reranker}_top{args.topk}_{args.alias}.txt"
         if os.path.exists(output_file) and not args.overwrite:
+            print(f"{output_file} exists, skipping")
             continue
 
         input_file = f"results/{dataset}_retrival_{args.retriever}_top{args.topk}.jsonl"
@@ -147,7 +148,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default=None)
     parser.add_argument("--model-base", type=str, default=None)
-    parser.add_argument("--datasets", type=list, nargs="+", default=["dl19"])
+    parser.add_argument("--datasets", nargs="+", default=["dl19"])
     parser.add_argument("--retriever", type=str, default="bm25")
     parser.add_argument("--topk", type=int, default=20)
     parser.add_argument("--overwrite", action="store_true")
