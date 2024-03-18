@@ -114,6 +114,8 @@ def train():
 
     if model_args.encoder_name:
         model.get_model().initialize_modules(model_args)
+        model.get_encoder().to(compute_dtype)
+        model.get_projector().to(compute_dtype)
 
         if "lora" in model_args.encoder_name:
             peft_config = LoraConfig.from_pretrained(model_args.encoder_name)
