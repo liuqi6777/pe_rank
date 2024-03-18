@@ -212,6 +212,8 @@ def preprocess_plain_for_rank_lm(
     examples_tokenized, inputs_tokenized = [_tokenize_fn(strings, tokenizer) for strings in (examples, inputs)]
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
+    for label in labels:
+        label[label != tokenizer.convert_tokens_to_ids(RANK_TOKEN)] = IGNORE_TOKEN_ID
     input_ids = torch.nn.utils.rnn.pad_sequence(
         input_ids,
         batch_first=True,
