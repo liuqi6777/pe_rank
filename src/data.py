@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 import ujson as json
 from typing import Sequence
@@ -15,7 +16,7 @@ from constants import RANK_TOKEN, IGNORE_TOKEN_ID
 
 
 # FIXME: mask placeholders
-def preprocess_for_causal_lm(
+def preprocess_conversations_for_causal_lm(
     sources,
     tokenizer: transformers.PreTrainedTokenizer,
     conversation_template: str = "vicuna",
@@ -99,7 +100,58 @@ def preprocess_for_causal_lm(
     )
 
 
-def preprocess_for_ranking(
+def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> dict:
+    """Tokenize a list of strings."""
+    tokenized_list = [
+        tokenizer(
+            text,
+            return_tensors="pt",
+            padding="longest",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+        )
+        for text in strings
+    ]
+    input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
+    input_ids_lens = labels_lens = [
+        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
+    ]
+    return dict(
+        input_ids=input_ids,
+        labels=labels,
+        input_ids_lens=input_ids_lens,
+        labels_lens=labels_lens,
+    )
+
+
+def preprocess_plain_for_causal_lm(
+    sources,
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> dict[str, torch.Tensor]:
+    inputs = [s["input"] for s in sources]
+    targets = [s["output"] + tokenizer.eos_token for s in sources]
+    examples = [s + t for s, t in zip(inputs, targets)]
+    examples_tokenized, inputs_tokenized = [_tokenize_fn(strings, tokenizer) for strings in (examples, inputs)]
+    input_ids = examples_tokenized["input_ids"]
+    labels = copy.deepcopy(input_ids)
+    for label, input_len in zip(labels, inputs_tokenized["input_ids_lens"]):
+        label[:input_len] = IGNORE_TOKEN_ID
+    input_ids = torch.nn.utils.rnn.pad_sequence(
+        input_ids,
+        batch_first=True,
+        padding_value=tokenizer.pad_token_id
+    
+    )
+    labels = torch.nn.utils.rnn.pad_sequence(
+        labels,
+        batch_first=True,
+        padding_value=IGNORE_TOKEN_ID
+    )
+    return dict(input_ids=input_ids, labels=labels,
+                attention_mask=input_ids.ne(tokenizer.pad_token_id))
+
+
+def preprocess_conversations_for_ranking(
     sources,
     rankings,
     tokenizer: transformers.PreTrainedTokenizer,
@@ -149,6 +201,32 @@ def preprocess_for_ranking(
     )
 
 
+def preprocess_plain_for_rank_lm(
+    sources,
+    rankings,
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> dict[str, torch.Tensor]:
+    inputs = [s["input"] for s in sources]
+    targets = [f"{RANK_TOKEN}" * len(ranking) + tokenizer.eos_token for ranking in rankings]
+    examples = [s + t for s, t in zip(inputs, targets)]
+    examples_tokenized, inputs_tokenized = [_tokenize_fn(strings, tokenizer) for strings in (examples, inputs)]
+    input_ids = examples_tokenized["input_ids"]
+    labels = copy.deepcopy(input_ids)
+    input_ids = torch.nn.utils.rnn.pad_sequence(
+        input_ids,
+        batch_first=True,
+        padding_value=tokenizer.pad_token_id
+    
+    )
+    labels = torch.nn.utils.rnn.pad_sequence(
+        labels,
+        batch_first=True,
+        padding_value=IGNORE_TOKEN_ID
+    )
+    return dict(input_ids=input_ids, labels=labels,
+                attention_mask=input_ids.ne(tokenizer.pad_token_id))
+
+
 class LazyDataset(Dataset):
     def __init__(
         self,
@@ -160,6 +238,8 @@ class LazyDataset(Dataset):
         super().__init__()
         print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
+        if not self.tokenizer.pad_token:
+            tokenizer.pad_token = tokenizer.eos_token
         self.encoder_tokenizer = encoder_tokenizer
         if self.encoder_tokenizer.eos_token:
             print("WARNING: will add eos token to the end of extra texts")
@@ -186,12 +266,17 @@ class DatasetForCausalLM(LazyDataset):
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
         if i in self.cached_data_dict:
             return self.cached_data_dict[i]
-
-        ret = preprocess_for_causal_lm(
-            [self.raw_data[i]["conversations"]],
-            self.tokenizer,
-            self.conversation_template
-        )
+        if "conversations" in self.raw_data[i]:
+            ret = preprocess_conversations_for_causal_lm(
+                [self.raw_data[i]["conversations"]],
+                self.tokenizer,
+                self.conversation_template
+            )
+        else:
+            ret = preprocess_plain_for_causal_lm(
+                [self.raw_data[i]],
+                self.tokenizer
+            )
         ret = dict(
             input_ids=ret["input_ids"][0],
             labels=ret["labels"][0],
@@ -220,12 +305,19 @@ class DatasetForRanking(LazyDataset):
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
         if i in self.cached_data_dict:
             return self.cached_data_dict[i]
-        ret = preprocess_for_ranking(
-            [self.raw_data[i]["conversations"]],
-            [self.raw_data[i]["ranking"]],
-            self.tokenizer,
-            self.conversation_template
-        )
+        if "conversations" in self.raw_data[i]:
+            ret = preprocess_conversations_for_ranking(
+                [self.raw_data[i]["conversations"]],
+                [self.raw_data[i]["ranking"]],
+                self.tokenizer,
+                self.conversation_template
+            )
+        else:
+            ret = preprocess_plain_for_rank_lm(
+                [self.raw_data[i]],
+                [self.raw_data[i]["ranking"]],
+                self.tokenizer
+            )
         ranking = torch.tensor(self.raw_data[i]["ranking"])
         ret = dict(
             input_ids=ret["input_ids"][0],
