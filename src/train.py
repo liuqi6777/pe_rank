@@ -151,6 +151,10 @@ def train():
                 output.requires_grad_(True)
             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
+    if model_args.freeze_embedding_layer:
+        for p in model.get_input_embeddings().parameters():
+            p.requires_grad = False
+
     # Load data
     data_module = make_data_module(
         tokenizer=tokenizer,

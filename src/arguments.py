@@ -23,6 +23,7 @@ class ModelArguments:
     )
     version: Optional[str] = field(default="v0")
     freeze_backbone: bool = field(default=False)
+    freeze_embedding_layer: bool = field(default=False)
     tune_mlp_adapter: bool = field(default=False)
     encoder_name: Optional[str] = field(
         default="jinaai/jina-embeddings-v2-base-en")
