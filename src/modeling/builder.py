@@ -19,6 +19,7 @@ def load_pretrained_model(
     model_path,
     model_base=None,
     model_name=None,
+    model_type="rank_lm",
     load_8bit=False,
     load_4bit=False,
     device_map="auto",
@@ -48,6 +49,7 @@ def load_pretrained_model(
         kwargs['attn_implementation'] = 'flash_attention_2'
 
     if 'embed' in model_name.lower():
+        model_cls = EmbedLlamaForRankLM if model_type == "rank_lm" else EmbedLlamaForCausalLM
         if os.path.exists(os.path.join(model_path, 'adapter_config.json')):
             # load lora model
             lora_cfg_pretrained = PeftConfig.from_pretrained(model_path)
@@ -56,7 +58,7 @@ def load_pretrained_model(
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
             cfg_pretrained = AutoConfig.from_pretrained(model_path)
             cfg_pretrained.vocab_size = len(tokenizer)
-            model = EmbedLlamaForRankLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
+            model = model_cls.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
             # now didn't initialize addintional token embeddings, encoder, and projector
             # initialize them manually as follows
             model.initialize_tokenizer(tokenizer)
@@ -93,7 +95,7 @@ def load_pretrained_model(
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
             cfg_pretrained = AutoConfig.from_pretrained(model_path)
             cfg_pretrained.vocab_size = len(tokenizer)
-            model = EmbedLlamaForRankLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
+            model = model_cls.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
              # now didn't initialize addintional token embeddings, encoder, and projector
             # initialize them manually as follows
             model.initialize_tokenizer(tokenizer)
@@ -108,7 +110,7 @@ def load_pretrained_model(
             print(f'Loading model from {model_path}...')
             tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
             config = AutoConfig.from_pretrained(model_path)
-            model = EmbedLlamaForRankLM.from_pretrained(
+            model = model_cls.from_pretrained(
                 model_path,
                 config=config,
                 low_cpu_mem_usage=True,
