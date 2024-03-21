@@ -412,7 +412,11 @@ def make_data_module(
         encoder_tokenizer=encoder_tokenizer)
 
     if data_args.eval_data_path:
-        eval_json = json.load(open(data_args.eval_data_path, "r"))
+        if data_args.eval_data_path.endswith(".json"):
+            train_json = json.load(open(data_args.data_path, "r"))
+        elif data_args.eval_data_path.endswith(".jsonl"):
+            with open(data_args.eval_data_path, "r") as f:
+                eval_json = [json.loads(line) for line in f]
         eval_dataset = dataset_cls(
             eval_json, tokenizer=tokenizer, encoder_tokenizer=encoder_tokenizer)
     else:
