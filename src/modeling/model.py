@@ -61,7 +61,4 @@ class ELMMetaModel:
         embeddings = self.get_encoder()(**inputs)
         project_as_token_embeddings = self.get_projector()(embeddings)
         # no need to normalize to align with the original token embedding space
-        # project_text_embeddings = self.get_encoder_head()(embeddings)
-        # project_text_embeddings = torch.nn.functional.normalize(project_text_embeddings, p=2, dim=-1)
-        project_text_embeddings = torch.nn.functional.normalize(project_as_token_embeddings, p=2, dim=-1)
-        return project_as_token_embeddings, project_text_embeddings
+        return project_as_token_embeddings, project_as_token_embeddings

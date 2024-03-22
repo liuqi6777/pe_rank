@@ -8,11 +8,19 @@ from constants import IGNORE_TOKEN_ID
 def set_loss_function(model: nn.Module, loss_type: str):
     print(f"Setting loss function: {loss_type}")
     loss_type, temperature = loss_type.split("-")
+    if temperature == "no":
+        setattr(model, "normalize_embeddings", False)
+        temperature = 1.0
+    else:
+        try:
+            temperature = float(temperature)
+        except ValueError:
+            raise ValueError(f"Invalid temperature: {temperature}")
     if loss_type == "listnet":
-        loss_function = ListNetLoss(float(temperature))
+        loss_function = ListNetLoss(temperature)
     elif "listmle" in loss_type:
         weighted = f"weighted_{loss_type[-1]}" if len(loss_type) > 7 else None
-        loss_function = ListMLELoss(weighted=weighted, temperature=float(temperature))
+        loss_function = ListMLELoss(weighted=weighted, temperature=temperature)
     else:
         raise ValueError(f"Invalid loss type: {loss_type}")
     setattr(model, "loss_function", loss_function)
@@ -86,7 +94,6 @@ class ListNetLoss(nn.Module):
         labels: LongTensor,
         ranking: LongTensor
     ) -> tuple[Tensor, Tensor]:
-        hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
         logits = (hidden_states @ text_embeddings.permute(0, 2, 1)) / self.temperature
 
         # Shift so that tokens < n predict n
@@ -115,7 +122,6 @@ class ListMLELoss(nn.Module):
         labels: LongTensor,
         ranking: LongTensor
     ) -> tuple[Tensor, Tensor]:
-        hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
         logits = (hidden_states @ text_embeddings.permute(0, 2, 1)) / self.temperature
 
         # Shift so that tokens < n predict n
