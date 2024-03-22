@@ -16,6 +16,7 @@ def set_loss_function(model: nn.Module, loss_type: str):
             temperature = float(temperature)
         except ValueError:
             raise ValueError(f"Invalid temperature: {temperature}")
+        setattr(model, "normalize_embeddings", True)
     if loss_type == "listnet":
         loss_function = ListNetLoss(temperature)
     elif "listmle" in loss_type:
