@@ -12,9 +12,7 @@ from modeling.builder import load_pretrained_model
 
 
 EVAL_DATASETS = [
-    "data/pretrain_eval/query_reconstruction_eval.jsonl",
-    "data/pretrain_eval/doc_reconstruction_eval.jsonl",
-    "data/pretrain_eval/pair_relevance_comparision_eval.jsonl",
+    "/home/liuqi/workspace/research/EmbeddingLLM/data/wiki_dpr_pretrain.jsonl"
 ]
 
 
@@ -29,6 +27,7 @@ def evaluate_one_dataset(
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
     conversations = []
     extra_texts = []
+    labels = []
     for source in data:
         conversation = source["conversations"]
         if roles[conversation[0]["from"]] != conv.roles[0]:
@@ -40,6 +39,7 @@ def evaluate_one_dataset(
         conversations.append(conv.get_prompt())
         
         extra_texts.append(source["extra_texts"])
+        labels.append(conversation[1]["value"])
     
     outputs = []
 
@@ -81,7 +81,7 @@ def evaluate_one_dataset(
             output = tokenizer.decode(one_output_ids[0], skip_special_tokens=True)
             outputs.append(output)
     
-    return outputs
+    return outputs, labels
 
 
 def eval_model(args):
@@ -89,29 +89,30 @@ def eval_model(args):
     tokenizer, model, context_len = load_pretrained_model(
         model_path=args.model_path,
         model_base=args.model_base,
-        model_name="ellama",
-        projector_path=args.model_path,
-        use_flash_attn=True,
+        model_name="embed_llama",
+        model_type="causal_lm",
+        device_map="auto"
     )
     encoder_tokenizer = AutoTokenizer.from_pretrained(model.config.encoder_name)
 
     for eval_set in EVAL_DATASETS:
         with open(eval_set, "r") as f:
             data = [json.loads(line) for line in f]
-        outputs = evaluate_one_dataset(data, model, tokenizer, encoder_tokenizer, args)
+            data = random.sample(data, 100)
+        outputs, labels = evaluate_one_dataset(data, model, tokenizer, encoder_tokenizer, args)
         
         dataset_name = eval_set.split("/")[-1].replace(".jsonl", "")
         model_name = args.model_path.split("/")[-1]
         
-        with open(os.path.join("results/pretrain_eval", f"{model_name}--{dataset_name}.txt"), "w") as f:
-            for output in outputs:
-                f.write(output + "\n")
+        with open(f"results/pretrain/{model_name}_{dataset_name}.txt", "w") as f:
+            for output, label in zip(outputs, labels):
+                f.write((f"label: {label}\noutput: {output}\n\n"))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="checkpoints/vicuna.jina.construct200k.pretrain")
-    parser.add_argument("--model-base", type=str, default="lmsys/vicuna-7b-v1.5")
+    parser.add_argument("--model-path", type=str, default="checkpoints/tiny.jina.wiki1m.pretrain")
+    parser.add_argument("--model-base", type=str, default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
     parser.add_argument("--conv-mode", type=str, default="vicuna")
     parser.add_argument("--temperature", type=float, default=0)
     parser.add_argument("--top_p", type=float, default=1)
