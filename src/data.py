@@ -251,23 +251,17 @@ class LazyDataset(Dataset):
             self.append_eos = False
         self.conversation_template = conversation_template
         self.raw_data = raw_data
-        self.cached_data_dict = {}
 
     def __len__(self):
         return len(self.raw_data)
 
     def __getitem__(self, i):
-        if i in self.cached_data_dict:
-            return self.cached_data_dict[i]
-        self.cached_data_dict[i] = self.raw_data[i]
         return self.raw_data[i]
 
 
 class DatasetForCausalLM(LazyDataset):
 
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
-        if i in self.cached_data_dict:
-            return self.cached_data_dict[i]
         if "conversations" in self.raw_data[i]:
             ret = preprocess_conversations_for_causal_lm(
                 [self.raw_data[i]["conversations"]],
@@ -298,15 +292,12 @@ class DatasetForCausalLM(LazyDataset):
             )
             ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
 
-        self.cached_data_dict[i] = ret
         return ret
 
 
 class DatasetForRanking(LazyDataset):
 
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
-        if i in self.cached_data_dict:
-            return self.cached_data_dict[i]
         if "conversations" in self.raw_data[i]:
             ret = preprocess_conversations_for_ranking(
                 [self.raw_data[i]["conversations"]],
@@ -341,7 +332,6 @@ class DatasetForRanking(LazyDataset):
             )
             ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
 
-        self.cached_data_dict[i] = ret
         return ret
 
 
