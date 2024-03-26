@@ -1,10 +1,9 @@
 import torch
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaModel, LlamaPreTrainedModel
 from transformers.file_utils import ModelOutput
-
+from transformers.cache_utils import Cache
 from modeling.model import ELMMetaModel
 from modeling.meta import MetaLM
 from modeling.rank_lm.loss import ListMLELoss
@@ -114,6 +113,8 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
     def rank(
         self,
         inputs: Optional[torch.Tensor] = None,
+        sliding_window_size: Optional[int] = None,
+        sliding_window_stride: Optional[int] = None,
         **kwargs,
     ) -> list[int]:
         position_ids = kwargs.pop("position_ids", None)
@@ -134,7 +135,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
                 inputs_embeds,
                 _,
                 extra_text_embeddings,
-                extra_text_positions,
+                _,
             ) = self.prepare_inputs_labels_embeddings(
                 inputs,
                 position_ids,
@@ -152,8 +153,6 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         # now only support one input
         assert extra_text_embeddings.shape[0] == 1, extra_text_embeddings.shape
         num_extra_texts = extra_text_embeddings.shape[1]
-
-        extra_text_positions = extra_text_positions[0]
 
         rankings = []
         ranking_mask = torch.zeros(extra_text_embeddings.shape[1], 
@@ -176,9 +175,8 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
             ranking = torch.argmax(logits).item()
             ranking_mask[ranking] = 1
             rankings.append(ranking + 1)
-            inputs_embeds = torch.cat([inputs_embeds, extra_text_embeddings[:, [ranking]].to(inputs_embeds.device)], dim=1)
-            extra_text_positions = torch.cat([extra_text_positions, 
-                                              torch.tensor([False], device=extra_text_positions.device)])
+            # only need to use new input embeddings for the next iteration when using cache
+            inputs_embeds =  extra_text_embeddings[:, ranking].view(1, 1, -1).to(inputs_embeds.device)
             past_key_values = outputs[1]
 
         return rankings
