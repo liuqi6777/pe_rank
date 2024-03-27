@@ -117,14 +117,14 @@ def eval_model(args):
 
         reranker = (args.model_path or args.model_base).split("/")[-1]
         if not args.alias:
-            output_file = f"results/eval_{dataset}_{args.retriever}_{reranker}_top{args.topk}.txt"
+            output_file = f"results/rerank_results/{args.retriever}/eval_{dataset}_{reranker}_top{args.topk}.txt"
         else:
-            output_file = f"results/eval_{dataset}_{args.retriever}_{reranker}_top{args.topk}_{args.alias}.txt"
+            output_file = f"results/rerank_results/{args.retriever}/eval_{dataset}_{reranker}_top{args.topk}_{args.alias}.txt"
         if os.path.exists(output_file) and not args.overwrite:
             print(f"{output_file} exists, skipping")
             continue
 
-        input_file = f"results/{dataset}_retrival_{args.retriever}_top{args.topk}.jsonl"
+        input_file = f"results/retrieval_results/{args.retriever}/{dataset}_top{args.topk}.jsonl"
         with open(input_file, "r") as f:
             data = [json.loads(line) for line in f]
         conversations, extra_texts = process_data(data)
