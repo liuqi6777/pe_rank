@@ -9,9 +9,11 @@ def set_loss_function(model: nn.Module, loss_type: str):
     print(f"Setting loss function: {loss_type}")
     loss_type, temperature = loss_type.split("-")
     if temperature == "no":
+        # use dot product as similarity
         setattr(model, "normalize_embeddings", False)
         temperature = 1.0
     else:
+        # use cosine similarity
         try:
             temperature = float(temperature)
         except ValueError:
@@ -20,8 +22,12 @@ def set_loss_function(model: nn.Module, loss_type: str):
     if loss_type == "listnet":
         loss_function = ListNetLoss(temperature)
     elif "listmle" in loss_type:
-        weighted = f"weighted_{loss_type[-1]}" if len(loss_type) > 7 else None
-        loss_function = ListMLELoss(weighted=weighted, temperature=temperature)
+        loss_type, *use_ib = loss_type.split("+")
+        weighted = f"weighted_{loss_type[-1]}" if len(loss_type) == 8 else None
+        if use_ib and use_ib[0] == "ib":
+            loss_function = ListMLELossWithIBNegs(weighted=weighted, temperature=temperature)
+        else:
+            loss_function = ListMLELoss(weighted=weighted, temperature=temperature)
     else:
         raise ValueError(f"Invalid loss type: {loss_type}")
     setattr(model, "loss_function", loss_function)
@@ -136,3 +142,24 @@ class ListMLELoss(nn.Module):
         logprob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], -1)
         loss = torch.sum(logprob * weights, dim=-1).mean()
         return loss, shift_logits.reshape(ranking.shape[0], ranking.shape[1], -1)
+
+
+class ListMLELossWithIBNegs(ListMLELoss):
+
+    def forward(
+        self,
+        hidden_states:  Tensor,
+        text_embeddings: Tensor,
+        labels: LongTensor,
+        ranking: LongTensor
+    ):
+        loss1, shift_logits = super().forward(hidden_states, text_embeddings, labels, ranking)
+
+        label_mask, *_ = make_mask_with_labels(labels[..., 1:], ranking, weighted=self.weighted)        
+        hidden_states = hidden_states[..., :-1, :][label_mask.sum(-1).bool()]
+        hidden_states = hidden_states.view(ranking.size(0), -1, hidden_states.size(-1))[:, 0]
+        ib_labels = rank_minus_one(ranking)[:, 0] + torch.arange(
+            hidden_states.shape[0], device=ranking.device) * ranking.shape[-1]
+        all_logits = (hidden_states @ text_embeddings.view(-1, text_embeddings.shape[-1]).T) / self.temperature
+        loss2 = torch.nn.functional.cross_entropy(all_logits, ib_labels)
+        return loss1 + loss2, shift_logits
