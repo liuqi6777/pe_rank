@@ -112,7 +112,8 @@ def run_retriever(topics, searcher, index_reader, qrels=None, topk=100, qid=None
                 content = json.loads(index_reader.doc(hit.docid).raw())
                 if "title" in content:
                     content = (
-                        "Title: " + content["title"] + " " + "Content: " + content["text"]
+                        "Title: " + content["title"] +
+                        " " + "Content: " + content["text"]
                     )
                 elif "contents" in content:
                     content = content["contents"]
@@ -163,7 +164,8 @@ def run_cross_rerank(retrieval_results, model, tokenizer):
         inputs = {key: value.to('cuda') for key, value in inputs.items()}
         scores = model(**inputs).logits.flatten().cpu().numpy().tolist()
         ranking = np.argsort(scores)[::-1]
-        rerank_results.append({'query': retrieval_results[i]['query'], 'hits': []})
+        rerank_results.append(
+            {'query': retrieval_results[i]['query'], 'hits': []})
         for j in range(0, len(ranking)):
             hit = retrieval_results[i]['hits'][ranking[j]]
             hit['score'] = scores[ranking[j]]
@@ -178,7 +180,8 @@ def run_embedding_rerank(retrieval_results, model):
     rerank_results = []
     all_queries = [hit['query'] for hit in retrieval_results]
     queries_embeddings = model.encode(all_queries, convert_to_tensor=True)
-    queries_embeddings = torch.nn.functional.normalize(queries_embeddings, p=2, dim=-1)
+    queries_embeddings = torch.nn.functional.normalize(
+        queries_embeddings, p=2, dim=-1)
     for i in tqdm(range(len(retrieval_results))):
         all_passages = [hit['content'] for hit in retrieval_results[i]['hits']]
         if len(all_passages) == 0:
@@ -187,7 +190,8 @@ def run_embedding_rerank(retrieval_results, model):
         passages_embeddings = torch.nn.functional.normalize(passages_embeddings, p=2, dim=-1)
         scores = (queries_embeddings[i] @ passages_embeddings.T).flatten().cpu().numpy()
         ranking = np.argsort(scores)[::-1]
-        rerank_results.append({'query': retrieval_results[i]['query'], 'hits': []})
+        rerank_results.append(
+            {'query': retrieval_results[i]['query'], 'hits': []})
         for j in range(0, len(ranking)):
             hit = retrieval_results[i]['hits'][ranking[j]]
             hit['score'] = scores[ranking[j]]
@@ -196,9 +200,9 @@ def run_embedding_rerank(retrieval_results, model):
 
 
 def eval_dataset(args):
-    
+
     dataset, retriever, reranker, topk = args.dataset, args.retriever, args.reranker, args.topk
-    
+
     print('#' * 20)
     print(f'Evaluation on {dataset}')
     print('#' * 20)
@@ -220,7 +224,8 @@ def eval_dataset(args):
         else:
             encoder = AutoQueryEncoder(retriever, pooling=args.dense_encoder_pooling, l2_norm=True)
             retriever = retriever.split('/')[-1]  # maybe hf model
-            index_dir = os.path.join('indexes', f'{INDEX["dense"][dataset]}.{retriever}')
+            index_dir = os.path.join(
+                'indexes', f'{INDEX["dense"][dataset]}.{retriever}')
             searcher = FaissSearcher(
                 index_dir=index_dir,
                 query_encoder=encoder
@@ -230,32 +235,40 @@ def eval_dataset(args):
         topics = get_topics(TOPICS[dataset] if dataset != 'dl20' else 'dl20')
         qrels = get_qrels(TOPICS[dataset])
         retrieval_results = run_retriever(topics, searcher, index_reader, qrels, topk=topk)
+        retrieval_results_path = os.path.join('results', 'retrieval_results', retriever)
+        os.makedirs(retrieval_results_path, exist_ok=True)
         write_retrival_results(
-            retrieval_results, f'results/{dataset}_retrival_{retriever}_top{topk}.jsonl')
+            retrieval_results,
+            os.path.join(retrieval_results_path, f'{dataset}_top{topk}.jsonl')
+        )
+
+    if reranker is None or args.reranker_type is None:
+        output_file = os.path.join(retrieval_results_path, f'eval_{dataset}_top{topk}.txt')
+        write_eval_file(rerank_results, output_file)
+        EvalFunction.main(TOPICS[dataset], output_file)
+        return
 
     # Rerank
-    if reranker is None or args.reranker_type is None:
-        rerank_results = retrieval_results
-    elif reranker and args.reranker_type == 'embedding':
+    if reranker and args.reranker_type == 'embedding':
         tokenizer = AutoTokenizer.from_pretrained(reranker)
         model = SentenceTransformer(reranker, trust_remote_code=True)
         rerank_results = run_embedding_rerank(retrieval_results, model)
     elif reranker and args.reranker_type == 'cross':
         tokenizer = AutoTokenizer.from_pretrained(reranker)
         model = AutoModelForSequenceClassification.from_pretrained(
-            reranker, num_labels=1, trust_remote_code=True)
+            reranker, num_labels=1, trust_remote_code=True
+        )
         rerank_results = run_cross_rerank(retrieval_results, model, tokenizer)
     else:
         raise NotImplementedError(f'Reranker type {args.reranker_type} is not supported')
 
     # Evaluate nDCG@10
-    output_file = tempfile.NamedTemporaryFile(delete=False).name
+    rerank_results_path = os.path.join('results', 'rerank_results', retriever)
+    os.makedirs(rerank_results_path, exist_ok=True)
+    output_file = os.path.join(rerank_results_path,
+                               f'eval_{dataset}_{reranker.split("/")[-1]}_top{topk}.txt')
     write_eval_file(rerank_results, output_file)
     EvalFunction.main(TOPICS[dataset], output_file)
-    # Rename the output file to a better name
-    if reranker:
-        reranker = reranker.split('/')[-1]
-    shutil.move(output_file, f'results/eval_{dataset}_{retriever}_{reranker}_top{topk}.txt')
 
 
 if __name__ == '__main__':
