@@ -107,7 +107,7 @@ class ListNetLoss(nn.Module):
         shift_logits = shift_logits[label_mask.sum(-1).bool()]
         logprob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], -1)
         loss = torch.sum(logprob * weights, dim=-1).mean()
-        return loss, shift_logits
+        return loss, shift_logits.reshape(ranking.shape[0], ranking.shape[1], -1)
 
 
 class ListMLELoss(nn.Module):
@@ -135,4 +135,4 @@ class ListMLELoss(nn.Module):
         shift_logits = shift_logits[label_mask.sum(-1).bool()]
         logprob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], -1)
         loss = torch.sum(logprob * weights, dim=-1).mean()
-        return loss, shift_logits
+        return loss, shift_logits.reshape(ranking.shape[0], ranking.shape[1], -1)
