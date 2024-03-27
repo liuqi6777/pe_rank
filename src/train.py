@@ -8,6 +8,7 @@ import transformers
 
 from arguments import ModelArguments, DataArguments, TrainingArguments, LoraArguments
 from data import make_data_module
+from metrics import compute_metrics
 from modeling.causal_lm import EmbedLlamaForCausalLM
 from modeling.rank_lm import EmbedLlamaForRankLM
 from modeling.rank_lm.loss import set_loss_function
@@ -165,7 +166,7 @@ def train():
 
     # Start trainner
     trainer = Trainer(
-        model=model, tokenizer=tokenizer, args=training_args, **data_module
+        model=model, tokenizer=tokenizer, args=training_args, compute_metrics=compute_metrics, **data_module
     )
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
