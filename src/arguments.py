@@ -1,15 +1,15 @@
 from dataclasses import dataclass, field
-from typing import Dict, Optional, List
-
-import transformers
-from transformers.trainer_pt_utils import LabelSmoother
+from typing import Optional
+from transformers import TrainingArguments as HFTrainingArguments
 
 
 @dataclass
 class ModelArguments:
     model_type: str = field(
         default="causal_lm",
-        metadata={"help": "The type of model to use. Can be 'causal_lm' or 'rank_lm'."},
+        metadata={
+            "help": "The type of model to use. Can be 'causal_lm' or 'rank_lm'."
+        },
     )
     model_name_or_path: Optional[str] = field(default="JackFram/llama-68m")
     trust_remote_code: bool = field(
@@ -25,10 +25,10 @@ class ModelArguments:
     freeze_backbone: bool = field(default=False)
     freeze_embedding_layer: bool = field(default=False)
     tune_mlp_adapter: bool = field(default=False)
-    encoder_name: Optional[str] = field(
-        default="jinaai/jina-embeddings-v2-base-en")
+    encoder_name: Optional[str] = field(default="jinaai/jina-embeddings-v2-base-en")
     encoder_pooling: Optional[str] = field(
-        default="mean", metadata={"help": "mean or cls"})
+        default="mean", metadata={"help": "mean or cls"}
+    )
     pretrain_mlp_adapter: Optional[str] = field(default=None)
     projector_type: Optional[str] = field(default='linear')
     loss_type: Optional[str] = field(default='listnet-1')
@@ -45,11 +45,10 @@ class DataArguments:
     conversation_template: str = field(
         default="vicuna", metadata={"help": "The conversation template to use."}
     )
-        
 
 
 @dataclass
-class TrainingArguments(transformers.TrainingArguments):
+class TrainingArguments(HFTrainingArguments):
     cache_dir: Optional[str] = field(default=None)
     optim: str = field(default="adamw_torch")
     remove_unused_columns: bool = field(default=False)
@@ -73,7 +72,7 @@ class LoraArguments:
     lora_r: int = 8
     lora_alpha: int = 16
     lora_dropout: float = 0.05
-    lora_target_modules: List[str] = field(
+    lora_target_modules: list[str] = field(
         default_factory=lambda: ["q_proj", "v_proj"]
     )
     lora_weight_path: str = ""
