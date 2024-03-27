@@ -1,15 +1,10 @@
-import logging
+import argparse
+import os
 import re
 import torch
 from torch import nn
 from mteb import MTEB
 from sentence_transformers import SentenceTransformer
-from transformers import AutoModel, AutoTokenizer
-from tqdm import tqdm
-
-logging.basicConfig(level=logging.INFO)
-
-logger = logging.getLogger("main")
 
 
 TASK_LIST_CLASSIFICATION = [
@@ -133,50 +128,30 @@ class ExtendedSentenceTransformer(SentenceTransformer):
         return super().encode(sentences, normalize_embeddings=True, **kwargs)
 
 
-def mean_pooling(embeddings, attention_mask):
-    return (torch.sum(embeddings * attention_mask.unsqueeze(-1), dim=1) \
-        / torch.clamp(torch.sum(attention_mask, dim=1, keepdims=True), min=1e-9)).to(embeddings.dtype)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-name", type=str, default="jinaai/jina-embeddings-v2-base-en")
+    parser.add_argument("--projector-path", type=str, default=None)
+    args = parser.parse_args()
 
+    if not args.projector_path:
+        model = SentenceTransformer(args.model_name, trust_remote_code=True)
+        output_path = os.path.join("results", args.model_name.split("/")[-1])
+    else:
+        model = ExtendedSentenceTransformer(
+            args.model_name,
+            "mlp2x_gelu",
+            args.projector_path,
+            trust_remote_code=True,
+        )
+        output_path = os.path.join("results", args.projector_path.split("/")[-1])
+    model._first_module().max_seq_length = 512
 
-class EmbedderEncoder(nn.Module):
-    def __init__(self, model_name):
-        super().__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        self.embedder = AutoModel.from_pretrained(model_name, trust_remote_code=True).get_input_embeddings()
-        self.embedder.cuda()
-
-    @torch.no_grad()
-    def encode(self, sentences, batch_size=512, **kwargs):
-        embeddings = []
-        for i in tqdm(range(0, len(sentences), batch_size)):
-            inputs = self.tokenizer(sentences[i:i+batch_size], return_tensors="pt", padding=True, truncation=True, max_length=512).to("cuda")
-            attention_mask = inputs["attention_mask"]
-            embeddings.append(mean_pooling(self.embedder(inputs["input_ids"]), attention_mask).cpu())
-        embeddings = torch.cat(embeddings, dim=0)
-        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-        return embeddings.numpy()
-
-
-# model_name = "jinaai/jina-embeddings-v2-base-en"
-# model = ExtendedSentenceTransformer(
-#     model_name,
-#     "mlp2x_gelu",
-#     "checkpoints/tiny2.jina.wiki1m.pretrain/projector.bin",
-#     trust_remote_code=True,
-# )
-# model._first_module().max_seq_length = 512
-
-model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-model = EmbedderEncoder(model_name)
-
-
-for task in TASK_LIST:
-    logger.info(f"Running task: {task}")
-    eval_splits = ["dev"] if task == "MSMARCO" else ["test"]
-    evaluation = MTEB(tasks=[task], task_langs=["en"])  # Remove "en" for running all languages
-    evaluation.run(
-        model,
-        output_folder=f"results/tiny",
-        eval_splits=eval_splits,
-        # overwrite_results=True,
-)
+    for task in TASK_LIST:
+        eval_splits = ["dev"] if task == "MSMARCO" else ["test"]
+        evaluation = MTEB(tasks=[task], task_langs=["en"])
+        evaluation.run(
+            model,
+            output_folder=output_path,
+            eval_splits=eval_splits,
+    )
