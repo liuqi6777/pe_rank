@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Optional
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaModel, LlamaPreTrainedModel
 from transformers.file_utils import ModelOutput
-from transformers.cache_utils import Cache
 from modeling.model import ELMMetaModel
 from modeling.meta import MetaLM
 from modeling.rank_lm.loss import ListMLELoss
@@ -113,8 +112,6 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
     def rank(
         self,
         inputs: Optional[torch.Tensor] = None,
-        sliding_window_size: Optional[int] = None,
-        sliding_window_stride: Optional[int] = None,
         **kwargs,
     ) -> list[int]:
         position_ids = kwargs.pop("position_ids", None)
