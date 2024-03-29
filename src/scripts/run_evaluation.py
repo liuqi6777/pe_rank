@@ -207,7 +207,8 @@ def eval_dataset(args):
     print(f'Evaluation on {dataset}')
     print('#' * 20)
 
-    retrieval_results_file = f'results/{dataset}_retrival_{retriever.split("/")}_top{topk}.jsonl'
+    retrieval_results_path = os.path.join('results', 'retrieval_results', retriever)
+    retrieval_results_file = os.path.join(retrieval_results_path, f'{dataset}_top{topk}.jsonl')
     if os.path.exists(retrieval_results_file):
         with open(retrieval_results_file) as f:
             retrieval_results = [json.loads(line) for line in f]
@@ -235,16 +236,15 @@ def eval_dataset(args):
         topics = get_topics(TOPICS[dataset] if dataset != 'dl20' else 'dl20')
         qrels = get_qrels(TOPICS[dataset])
         retrieval_results = run_retriever(topics, searcher, index_reader, qrels, topk=topk)
-        retrieval_results_path = os.path.join('results', 'retrieval_results', retriever)
         os.makedirs(retrieval_results_path, exist_ok=True)
         write_retrival_results(
             retrieval_results,
-            os.path.join(retrieval_results_path, f'{dataset}_top{topk}.jsonl')
+            retrieval_results_file
         )
 
     if reranker is None or args.reranker_type is None:
         output_file = os.path.join(retrieval_results_path, f'eval_{dataset}_top{topk}.txt')
-        write_eval_file(rerank_results, output_file)
+        write_eval_file(retrieval_results, output_file)
         EvalFunction.main(TOPICS[dataset], output_file)
         return
 
