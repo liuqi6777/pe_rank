@@ -8,7 +8,7 @@ import numpy as np
 from pyserini.index import IndexReader
 from pyserini.search import LuceneSearcher, LuceneImpactSearcher, FaissSearcher, get_topics, get_qrels
 from pyserini.search.faiss import AutoQueryEncoder
-from trec_eval import EvalFunction
+from trec_eval import trec_eval
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel, AutoModelForSequenceClassification
 from sentence_transformers import SentenceTransformer
@@ -245,7 +245,7 @@ def eval_dataset(args):
     if reranker is None or args.reranker_type is None:
         output_file = os.path.join(retrieval_results_path, f'eval_{dataset}_top{topk}.txt')
         write_eval_file(retrieval_results, output_file)
-        EvalFunction.main(TOPICS[dataset], output_file)
+        trec_eval(TOPICS[dataset], output_file)
         return
 
     # Rerank
@@ -268,7 +268,7 @@ def eval_dataset(args):
     output_file = os.path.join(rerank_results_path,
                                f'eval_{dataset}_{reranker.split("/")[-1]}_top{topk}.txt')
     write_eval_file(rerank_results, output_file)
-    EvalFunction.main(TOPICS[dataset], output_file)
+    trec_eval(TOPICS[dataset], output_file)
 
 
 if __name__ == '__main__':

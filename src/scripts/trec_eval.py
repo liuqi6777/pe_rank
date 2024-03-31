@@ -1,11 +1,9 @@
 import argparse
-import tempfile
-import pandas as pd
 import pytrec_eval
 from pyserini.search import get_qrels_file
 
 
-def trec_eval(
+def compute_metrics(
     qrels: dict[str, dict[str, int]],
     results: dict[str, dict[str, float]],
     k_values: tuple[int] = (10, 50, 100, 200, 1000)
@@ -50,31 +48,14 @@ def pretty_print_metrics(metrics: dict[str, float]):
         print(f"{metric:<12}\t{value}")
 
 
-class EvalFunction:
-
-    @staticmethod
-    def trunc(qrels, run):
-        qrels = get_qrels_file(qrels)
-        # print(qrels)
-        run = pd.read_csv(run, sep='\s+', header=None)
-        qrels = pd.read_csv(qrels, sep='\s+', header=None)
-        run[0] = run[0].astype(str)
-        qrels[0] = qrels[0].astype(str)
-        qrels = qrels[qrels[0].isin(run[0])]
-        temp_file = tempfile.NamedTemporaryFile(delete=False).name
-        qrels.to_csv(temp_file, sep='\t', header=None, index=None)
-        return temp_file
-
-    @staticmethod
-    def main(args_qrel, args_run):
-        args_qrel = EvalFunction.trunc(args_qrel, args_run)
-        with open(args_qrel, 'r') as f_qrel:
-            qrel = pytrec_eval.parse_qrel(f_qrel)
-        with open(args_run, 'r') as f_run:
-            run = pytrec_eval.parse_run(f_run)
-        all_metrics = trec_eval(qrel, run, k_values=(1, 5, 10, 20, 100))
-        pretty_print_metrics(all_metrics)
-        return all_metrics
+def trec_eval(dataset, ranking):
+    with open(ranking, 'r') as f_run:
+        run = pytrec_eval.parse_run(f_run)
+    with open(get_qrels_file(dataset), 'r') as f_qrel:
+        qrels = pytrec_eval.parse_qrel(f_qrel)
+    all_metrics = compute_metrics(qrels, run, k_values=(1, 5, 10, 20, 100))
+    pretty_print_metrics(all_metrics)
+    return all_metrics
 
 
 if __name__ == '__main__':
@@ -84,4 +65,4 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='dl19')
     parser.add_argument('--ranking', type=str, required=True)
     args = parser.parse_args()
-    EvalFunction.main(TOPICS[args.dataset], args.ranking)
+    trec_eval(TOPICS[args.dataset], args.ranking)
