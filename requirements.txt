@@ -2,7 +2,6 @@ deepspeed==0.12.3
 fschat==0.2.35
 huggingface_hub==0.22.1
 numpy==1.26.4
-pandas==2.2.1
 peft==0.6.2
 pyserini==0.24.0
 pytrec_eval==0.5
