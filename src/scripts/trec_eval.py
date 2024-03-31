@@ -47,10 +47,7 @@ def trec_eval(
 
 def pretty_print_metrics(metrics: dict[str, float]):
     for metric, value in metrics.items():
-        if len(metric) < 8:
-            print(f"{metric}\t\t{value}")
-        else:
-            print(f"{metric}\t{value}")
+        print(f"{metric:<12}\t{value}")
 
 
 class EvalFunction:
