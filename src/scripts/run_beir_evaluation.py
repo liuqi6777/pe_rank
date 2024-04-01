@@ -144,7 +144,7 @@ if __name__ == "__main__":
             args.projector_path,
             trust_remote_code=True,
         )
-        output_path = os.path.join("results", "mteb", args.projector_path.split("/")[-1])
+        output_path = os.path.join("results", "mteb", args.projector_path.split("/")[-2])
     model._first_module().max_seq_length = 512
 
     for task in TASK_LIST:
