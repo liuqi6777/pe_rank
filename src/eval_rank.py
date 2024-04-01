@@ -29,6 +29,8 @@ def eval_model(args):
     config = model.config
     model.to(torch.float16)
     model.eval()
+    if not args.model_path.split("/")[-1].split(".")[-1].endswith("no"):  # hotfix
+        setattr(model, "normalize_embeddings", True)
 
     encoder_tokenizer = AutoTokenizer.from_pretrained(config.encoder_name)
 
