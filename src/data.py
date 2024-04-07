@@ -4,9 +4,8 @@ import ujson as json
 from typing import Sequence
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
 import transformers
-from transformers.trainer_pt_utils import LabelSmoother
 
 from fastchat.conversation import SeparatorStyle
 from fastchat.model.model_adapter import get_conversation_template
@@ -229,16 +228,15 @@ def preprocess_plain_for_rank_lm(
                 attention_mask=input_ids.ne(tokenizer.pad_token_id))
 
 
-class LazyDataset(Dataset):
+class SFTDataset(Dataset):
     def __init__(
         self,
-        raw_data: list[dict],
+        data_path: str,
         tokenizer: transformers.PreTrainedTokenizer,
         encoder_tokenizer: transformers.PreTrainedTokenizer,
         conversation_template: str = "vicuna",
     ):
         super().__init__()
-        print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
         if not self.tokenizer.pad_token:
             tokenizer.pad_token = tokenizer.eos_token
@@ -250,7 +248,16 @@ class LazyDataset(Dataset):
         else:
             self.append_eos = False
         self.conversation_template = conversation_template
-        self.raw_data = raw_data
+        if data_path.endswith(".json"):
+            # directly load the data
+            with open(data_path, "r") as f:
+                self.raw_data = json.load(f)
+                assert isinstance(self.raw_data, list)
+        elif data_path.endswith(".jsonl"):
+            with open(data_path, "r") as f:
+                self.raw_data = [json.loads(line) for line in f]
+        else:
+            raise ValueError(f"Unsupported data format: {data_path}")
 
     def __len__(self):
         return len(self.raw_data)
@@ -259,7 +266,44 @@ class LazyDataset(Dataset):
         return self.raw_data[i]
 
 
-class DatasetForCausalLM(LazyDataset):
+class LazyDataset(IterableDataset):
+    def __init__(
+        self,
+        data_path: str,
+        tokenizer: transformers.PreTrainedTokenizer,
+        encoder_tokenizer: transformers.PreTrainedTokenizer,
+        conversation_template: str = "vicuna",
+    ):
+        super().__init__()
+        self.tokenizer = tokenizer
+        if not self.tokenizer.pad_token:
+            tokenizer.pad_token = tokenizer.eos_token
+        self.encoder_tokenizer = encoder_tokenizer
+        if self.encoder_tokenizer.eos_token:
+            print("WARNING: will add eos token to the end of extra texts")
+            self.encoder_tokenizer.pad_token = self.encoder_tokenizer.eos_token
+            self.append_eos = True
+        else:
+            self.append_eos = False
+        self.conversation_template = conversation_template
+        if data_path.endswith(".json"):
+            # directly load the data
+            with open(data_path, "r") as f:
+                self.raw_data = json.load(f)
+                assert isinstance(self.raw_data, list)
+        elif data_path.endswith(".jsonl"):
+            self.raw_data = open(data_path, "r", encoding="utf-8")
+        else:
+            raise ValueError(f"Unsupported data format: {data_path}")
+
+    def __iter__(self):
+        for item in self.raw_data:
+            if isinstance(item, str):
+                item = json.loads(item)
+            yield item
+
+
+class DatasetForCausalLM(SFTDataset):
 
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
         if "conversations" in self.raw_data[i]:
@@ -295,7 +339,7 @@ class DatasetForCausalLM(LazyDataset):
         return ret
 
 
-class DatasetForRanking(LazyDataset):
+class DatasetForRanking(SFTDataset):
 
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
         if "conversations" in self.raw_data[i]:
@@ -333,6 +377,87 @@ class DatasetForRanking(LazyDataset):
             ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
 
         return ret
+
+class LazyDatasetForCausalLM(LazyDataset):
+
+    def __iter__(self):
+        for item in self.raw_data:
+            if isinstance(item, str):
+                item = json.loads(item)
+            if "conversations" in item:
+                ret = preprocess_conversations_for_causal_lm(
+                    [item["conversations"]],
+                    self.tokenizer,
+                    self.conversation_template
+                )
+            else:
+                ret = preprocess_plain_for_causal_lm(
+                    [item],
+                    self.tokenizer
+                )
+            ret = dict(
+                input_ids=ret["input_ids"][0],
+                labels=ret["labels"][0],
+                attention_mask=ret["attention_mask"][0],
+            )
+            if "extra_texts" in item:
+                if self.append_eos:
+                    item["extra_texts"] = [
+                        f"{text}{self.encoder_tokenizer.eos_token}" for text in item["extra_texts"]
+                    ]
+                extra_text_inputs = self.encoder_tokenizer(
+                    item["extra_texts"],
+                    return_tensors="pt",
+                    padding="max_length",
+                    max_length=128,
+                    truncation=True,
+                )
+                ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
+
+            yield ret
+
+
+class LazyDatasetForRanking(LazyDataset):
+
+    def __iter__(self):
+        for item in self.raw_data:
+            if isinstance(item, str):
+                item = json.loads(item)
+            if "conversations" in item:
+                ret = preprocess_conversations_for_ranking(
+                    [item["conversations"]],
+                    [item["ranking"]],
+                    self.tokenizer,
+                    self.conversation_template
+                )
+            else:
+                ret = preprocess_plain_for_rank_lm(
+                    [item],
+                    [item["ranking"]],
+                    self.tokenizer
+                )
+            ranking = torch.tensor(item["ranking"])
+            ret = dict(
+                input_ids=ret["input_ids"][0],
+                labels=ret["labels"][0],
+                attention_mask=ret["attention_mask"][0],
+                ranking=ranking,
+            )
+            if "extra_texts" in item:
+                if self.append_eos:
+                    item["extra_texts"] = [
+                        f"{text}{self.encoder_tokenizer.eos_token}" for text in item["extra_texts"]
+                    ]
+                extra_text_inputs = self.encoder_tokenizer(
+                    item["extra_texts"],
+                    return_tensors="pt",
+                    padding="max_length",
+                    max_length=128,
+                    truncation=True,
+                )
+                ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
+
+            yield ret
 
 
 @dataclass
@@ -380,18 +505,12 @@ def make_data_module(
     data_args,
     model_type: str,
 ) -> dict:
-    dataset_cls = DatasetForCausalLM if model_type == "causal_lm" else DatasetForRanking
-    print("Loading data...")
-
-    if data_args.data_path.endswith(".json"):
-        train_json = json.load(open(data_args.data_path, "r"))
-    elif data_args.data_path.endswith(".jsonl"):
-        with open(data_args.data_path, "r") as f:
-            train_json = [json.loads(line) for line in f]
+    if not data_args.lazy_loading:
+        dataset_cls = DatasetForCausalLM if model_type == "causal_lm" else DatasetForRanking
     else:
-        raise ValueError(f"Unsupported data format: {data_args.data_path}")
+        dataset_cls = LazyDatasetForCausalLM if model_type == "causal_lm" else LazyDatasetForRanking
     train_dataset = dataset_cls(
-        train_json,
+        data_args.data_path,
         tokenizer=tokenizer,
         encoder_tokenizer=encoder_tokenizer,
         conversation_template=data_args.conversation_template,
@@ -402,13 +521,8 @@ def make_data_module(
         encoder_tokenizer=encoder_tokenizer)
 
     if data_args.eval_data_path:
-        if data_args.eval_data_path.endswith(".json"):
-            eval_json = json.load(open(data_args.eval_data_path, "r"))
-        elif data_args.eval_data_path.endswith(".jsonl"):
-            with open(data_args.eval_data_path, "r") as f:
-                eval_json = [json.loads(line) for line in f]
         eval_dataset = dataset_cls(
-            eval_json, tokenizer=tokenizer, encoder_tokenizer=encoder_tokenizer)
+            data_args.eval_data_path, tokenizer=tokenizer, encoder_tokenizer=encoder_tokenizer)
     else:
         eval_dataset = None
 

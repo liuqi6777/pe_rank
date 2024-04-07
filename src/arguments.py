@@ -45,6 +45,9 @@ class DataArguments:
     conversation_template: str = field(
         default="vicuna", metadata={"help": "The conversation template to use."}
     )
+    lazy_loading: bool = field(
+        default=False, metadata={"help": "Whether to use lazy loading."}
+    )
 
 
 @dataclass
