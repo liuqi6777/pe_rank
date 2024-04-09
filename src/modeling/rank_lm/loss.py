@@ -7,7 +7,20 @@ from constants import IGNORE_TOKEN_ID
 
 def set_loss_function(model: nn.Module, loss_type: str):
     print(f"Setting loss function: {loss_type}")
-    loss_type, temperature = loss_type.split("-")
+    loss_type = loss_type.split("+")
+    if len(loss_type) == 1:
+        loss_type, use_ib, temperature = loss_type[0], False, "no"
+    elif len(loss_type) == 2:
+        loss_type, use_ib_or_temperature = loss_type
+        if use_ib_or_temperature == "ib":
+            use_ib, temperature = True, "no"
+        else:
+            use_ib, temperature = None, use_ib_or_temperature
+    elif len(loss_type) == 3:
+        loss_type, use_ib, temperature = loss_type
+    else:
+        raise ValueError(f"Invalid loss type: {loss_type}")
+
     if temperature == "no":
         # use dot product as similarity
         setattr(model, "normalize_embeddings", False)
@@ -19,15 +32,19 @@ def set_loss_function(model: nn.Module, loss_type: str):
         except ValueError:
             raise ValueError(f"Invalid temperature: {temperature}")
         setattr(model, "normalize_embeddings", True)
+
     if loss_type == "listnet":
         loss_function = ListNetLoss(temperature)
-    elif "listmle" in loss_type:
-        loss_type, *use_ib = loss_type.split("+")
-        weighted = f"weighted_{loss_type[-1]}" if len(loss_type) == 8 else None
-        if use_ib and use_ib[0] == "ib":
-            loss_function = ListMLELossWithIBNegs(weighted=weighted, temperature=temperature)
+    elif loss_type == "listmle":
+        if use_ib:
+            loss_function = ListMLELossWithIBNegs(weighted=None, temperature=temperature)
         else:
-            loss_function = ListMLELoss(weighted=weighted, temperature=temperature)
+            loss_function = ListMLELoss(weighted=None, temperature=temperature)
+    elif loss_type == "plistmle":
+        if use_ib:
+            loss_function = ListMLELossWithIBNegs(weighted="weighted_4", temperature=temperature)
+        else:
+            loss_function = ListMLELoss(weighted="weighted_4", temperature=temperature)
     else:
         raise ValueError(f"Invalid loss type: {loss_type}")
     setattr(model, "loss_function", loss_function)
