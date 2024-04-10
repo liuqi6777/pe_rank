@@ -122,7 +122,7 @@ def eval_dataset(args):
     print(f'Evaluation on {dataset}')
     print('#' * 20)
 
-    retrieval_results_path = os.path.join('results', 'retrieval_results', retriever)
+    retrieval_results_path = os.path.join('results', 'retrieval_results', retriever.split('/')[-1])
     retrieval_results_file = os.path.join(retrieval_results_path, f'{dataset}_top{topk}.jsonl')
     if os.path.exists(retrieval_results_file):
         with open(retrieval_results_file) as f:
