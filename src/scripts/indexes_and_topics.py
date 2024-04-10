@@ -42,22 +42,22 @@ INDEX = {
     'dense': {
         'dl19': 'msmarco-v1-passage',
         'dl20': 'msmarco-v1-passage',
-        'covid': 'beir-v1.0.0-trec-covid',
-        'arguana': 'beir-v1.0.0-arguana',
-        'touche': 'beir-v1.0.0-webis-touche2020',
-        'news': 'beir-v1.0.0-trec-news',
-        'scifact': 'beir-v1.0.0-scifact',
-        'fiqa': 'beir-v1.0.0-fiqa',
-        'scidocs': 'beir-v1.0.0-scidocs',
-        'nfc': 'beir-v1.0.0-nfcorpus',
-        'quora': 'beir-v1.0.0-quora',
-        'dbpedia': 'beir-v1.0.0-dbpedia-entity',
-        'fever': 'beir-v1.0.0-fever',
-        'robust04': 'beir-v1.0.0-robust04',
-        'signal': 'beir-v1.0.0-signal1m',
-        'nq': 'beir-v1.0.0-nq',
-        'cfever': 'beir-v1.0.0-climate-fever',
-        'hotpotqa': 'beir-v1.0.0-hotpotqa'
+        'covid': 'trec-covid',
+        'arguana': 'arguana',
+        'touche': 'webis-touche2020',
+        'news': 'trec-news',
+        'scifact': 'scifact',
+        'fiqa': 'fiqa',
+        'scidocs': 'scidocs',
+        'nfc': 'nfcorpus',
+        'quora': 'quora',
+        'dbpedia': 'dbpedia-entity',
+        'fever': 'fever',
+        'robust04': 'robust04',
+        'signal': 'signal1m',
+        'nq': 'nq',
+        'cfever': 'climate-fever',
+        'hotpotqa': 'hotpotqa'
     }
 }
 
