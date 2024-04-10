@@ -45,6 +45,8 @@ def set_loss_function(model: nn.Module, loss_type: str):
             loss_function = ListMLELossWithIBNegs(weighted="weighted_4", temperature=temperature)
         else:
             loss_function = ListMLELoss(weighted="weighted_4", temperature=temperature)
+    elif loss_type == "contrastive":
+        loss_function = ContrastiveLoss(temperature)
     else:
         raise ValueError(f"Invalid loss type: {loss_type}")
     setattr(model, "loss_function", loss_function)
@@ -91,7 +93,7 @@ def make_mask_with_labels(
     
     weights = torch.zeros(ranking.shape[1], dtype=torch.float, device=labels.device)
     if weighted is None:
-        weights[:] = 1
+        weights[:] = 1 / ranking.shape[1]
     elif weighted == "listnet":
         weights[0] = 1
     elif weighted == "weighted_1":
@@ -180,3 +182,26 @@ class ListMLELossWithIBNegs(ListMLELoss):
         all_logits = (hidden_states @ text_embeddings.view(-1, text_embeddings.shape[-1]).T) / self.temperature
         loss2 = torch.nn.functional.cross_entropy(all_logits, ib_labels)
         return loss1 + loss2, shift_logits
+
+
+class ContrastiveLoss(nn.Module):
+    def __init__(self, temperature: float = 1.0):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(
+        self,
+        hidden_states:  Tensor,
+        text_embeddings: Tensor,
+        labels: LongTensor,
+        ranking: LongTensor
+    ):
+
+        label_mask, *_ = make_mask_with_labels(labels[..., 1:], ranking)        
+        hidden_states = hidden_states[..., :-1, :][label_mask.sum(-1).bool()]
+        hidden_states = hidden_states.view(ranking.size(0), -1, hidden_states.size(-1))[:, 0]
+        ib_labels = rank_minus_one(ranking)[:, 0] + torch.arange(
+            hidden_states.shape[0], device=ranking.device) * ranking.shape[-1]
+        all_logits = (hidden_states @ text_embeddings.view(-1, text_embeddings.shape[-1]).T) / self.temperature
+        loss2 = torch.nn.functional.cross_entropy(all_logits, ib_labels)
+        return loss2, None
