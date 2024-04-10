@@ -30,11 +30,14 @@ class RerankLLM:
         result: dict,
         rank_start: int,
         rank_end: int,
+        record_num_processed_tokens: bool = False,
     ) -> list[dict]:
         model_inputs = self.create_inputs(result, rank_start, rank_end)
         permutation = self._model.rank(**model_inputs)
         result = self.receive_permutation(
             result, permutation, rank_start, rank_end)
+        if record_num_processed_tokens:
+            return result, model_inputs["inputs"].shape[1]
         return result
 
     @torch.inference_mode()
@@ -43,6 +46,7 @@ class RerankLLM:
         retrieved_result: dict,
         window_size: Optional[int] = None,
         step: Optional[int] = None,
+        record_num_processed_tokens: bool = False,
     ) -> list[dict]:
         rerank_result = copy.deepcopy(retrieved_result)
         rank_start, rank_end = 0, len(rerank_result["hits"])
@@ -54,13 +58,26 @@ class RerankLLM:
                 step = window_size // 2
         end_pos = rank_end
         start_pos = rank_end - window_size
+
+        num_processed_tokens_per_query = 0
+
         # end_pos > rank_start ensures that the list is non-empty while allowing last window to be smaller than window_size
         # start_pos + step != rank_start prevents processing of redundant windows (e.g. 0-20, followed by 0-10)
+        sliding_steps = 0
         while end_pos > rank_start and start_pos + step != rank_start:
             start_pos = max(start_pos, rank_start)
-            rerank_result = self.permutation_pipeline(rerank_result, start_pos, end_pos)
+            if record_num_processed_tokens:
+                rerank_result, num_processed_tokens = self.permutation_pipeline(
+                    rerank_result, start_pos, end_pos, record_num_processed_tokens
+                )
+                num_processed_tokens_per_query += num_processed_tokens
+            else:
+                rerank_result = self.permutation_pipeline(rerank_result, start_pos, end_pos)
             end_pos = end_pos - step
             start_pos = start_pos - step
+            sliding_steps += 1
+        if record_num_processed_tokens:
+            return rerank_result, sliding_steps, num_processed_tokens_per_query
         return rerank_result
 
     def receive_permutation(

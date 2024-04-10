@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import time
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -29,8 +30,6 @@ def eval_model(args):
     config = model.config
     model.to(torch.float16)
     model.eval()
-    if not args.model_path.split("/")[-1].split(".")[-1].endswith("no"):  # hotfix
-        setattr(model, "normalize_embeddings", True)
 
     encoder_tokenizer = AutoTokenizer.from_pretrained(config.encoder_name)
 
@@ -65,14 +64,40 @@ def eval_model(args):
             window_size, step = int(window_size), int(step)
 
         rerank_results = []
+        s = time.time()
+        all_num_processed_tokens = 0
         for i in tqdm(range(len(data))):
-            rerank_result = reranker_llm.rerank(
+            rerank_result, sliding_steps, num_processed_tokens = reranker_llm.rerank(
                 retrieved_result=data[i],
                 window_size=window_size,
                 step=step,
+                record_num_processed_tokens=True
             )
             rerank_results.append(rerank_result)
+            all_num_processed_tokens += num_processed_tokens
+        e = time.time()
+        latency_per_query = (e - s) / len(data)
+
         write_results(rerank_results, output_file)
+
+        results = {
+                "dataset": dataset,
+                "retriever": args.retriever,
+                "reranker": reranker,
+                "mode": args.rerank_mode,
+                "topk": args.topk,
+                "latency_per_query": latency_per_query,
+                "sliding_steps": sliding_steps,
+                "num_processed_tokens": all_num_processed_tokens / len(data),
+                "num_queries": len(data),
+        }
+
+        from scripts.trec_eval import trec_eval
+        from scripts.indexes_and_topics import TOPICS
+        metrics = trec_eval(TOPICS[dataset], output_file)
+        results["metrics"] = metrics
+        with open(f"results/rerank_results/results.jsonl", "a") as f:
+            f.write(json.dumps(results) + "\n")
 
 
 if __name__ == "__main__":
