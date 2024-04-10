@@ -11,6 +11,7 @@ from modeling.rank_lm.reranker import RerankLLM
 
 
 def write_results(rerank_results, output_file):
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "w") as f:
         for i, result in enumerate(rerank_results):
             hits = result["hits"]
