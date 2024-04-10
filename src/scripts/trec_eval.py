@@ -59,7 +59,7 @@ def trec_eval(dataset, ranking):
 
 
 if __name__ == '__main__':
-    from run_evaluation import TOPICS
+    from indexes_and_topics import TOPICS
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='dl19')
