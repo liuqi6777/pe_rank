@@ -24,7 +24,10 @@ def run_retriever(topics, searcher, index_reader, qrels=None, topk=100, qid=None
             rank = 0
             for hit in hits:
                 rank += 1
-                content = json.loads(index_reader.doc(hit.docid).raw())
+                if index_reader.doc(hit.docid):
+                    content = json.loads(index_reader.doc(hit.docid).raw())
+                else:
+                    continue
                 if "title" in content:
                     content = (
                         "Title: " + content["title"] +
