@@ -1,7 +1,7 @@
 import torch
 from dataclasses import dataclass
 from typing import Optional
-from transformers.models.llama.modeling_llama import LlamaConfig, LlamaModel, LlamaPreTrainedModel
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaModel, LlamaForCausalLM
 from transformers.file_utils import ModelOutput
 from modeling.model import ELMMetaModel
 from modeling.meta import MetaLM
@@ -26,23 +26,18 @@ class RankingOutput(ModelOutput):
     ranking: Optional[torch.LongTensor] = None
 
 
-class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
+class EmbedLlamaForRankLM(MetaLM, LlamaForCausalLM):
     config_class = EmbedLlamaConfig
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
         self.model = EmbedLlamaModel(config)
         self.config = config
+        self.oringinal_vocab_size = config.vocab_size
         self.post_init()
 
         self.loss_function = ListMLELoss(weighted="weighted_1")
         self.normalize_embeddings = False
-
-    def get_input_embeddings(self):
-        return self.model.embed_tokens
-
-    def set_input_embeddings(self, value):
-        self.model.embed_tokens = value
 
     def forward(
         self,
@@ -145,35 +140,20 @@ class EmbedLlamaForRankLM(MetaLM, LlamaPreTrainedModel):
         else:
             raise NotImplementedError(
                 "`extra_text_input_ids` and `extra_text_attention_mask` are required")
-        past_key_values = None
 
-        # now only support one input
-        assert extra_text_embeddings.shape[0] == 1, extra_text_embeddings.shape
-        num_extra_texts = extra_text_embeddings.shape[1]
+        self.resize_token_embeddings(self.oringinal_vocab_size + extra_text_embeddings.shape[1])
+        self.get_input_embeddings().weight.data[self.oringinal_vocab_size:] = extra_text_embeddings.to(self.lm_head.weight.device)
+        self.get_output_embeddings().weight.data[self.oringinal_vocab_size:] = extra_text_embeddings.to(self.lm_head.weight.device)
 
-        rankings = []
-        ranking_mask = torch.zeros(extra_text_embeddings.shape[1], 
-                                   dtype=torch.long, device=extra_text_embeddings.device)
-        for _ in range(num_extra_texts):
-            outputs = self.model(
-                input_ids=None,
-                inputs_embeds=inputs_embeds,
-                past_key_values=past_key_values,
-                use_cache=True,
-            )
-            hidden_states = outputs[0].to(extra_text_embeddings.device)
-            if self.normalize_embeddings:
-                hidden_states = torch.nn.functional.normalize(hidden_states, p=2, dim=-1)
-                extra_text_embeddings = torch.nn.functional.normalize(extra_text_embeddings, p=2, dim=-1)
-            logits = (hidden_states[0, -1] @ extra_text_embeddings[0].T).flatten()
-            # rankings = (torch.argsort(logits, descending=True) + 1).detach().cpu().tolist()
-            # break
-            logits[ranking_mask == 1] = -float("inf")
-            ranking = torch.argmax(logits).item()
-            ranking_mask[ranking] = 1
-            rankings.append(ranking + 1)
-            # only need to use new input embeddings for the next iteration when using cache
-            inputs_embeds =  extra_text_embeddings[:, ranking].view(1, 1, -1).to(inputs_embeds.device)
-            past_key_values = outputs[1]
-
+        self.forward = super().forward
+        rankings = self.generate(
+            inputs_embeds=inputs_embeds,
+            max_new_tokens=extra_text_embeddings.shape[1],
+            do_sample=False,
+            num_beams=20,
+            prefix_allowed_tokens_fn=lambda _, prev_ids: list(set([x + self.oringinal_vocab_size for x in range(extra_text_embeddings.shape[1])]) - set(prev_ids.tolist())),
+            pad_token_id=self.config.eos_token_id,
+        )
+        rankings = rankings[0].cpu().tolist()[-extra_text_embeddings.shape[1]:]
+        rankings = [x - self.oringinal_vocab_size + 1 for x in rankings]
         return rankings
