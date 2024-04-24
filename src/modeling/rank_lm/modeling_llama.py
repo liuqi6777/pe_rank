@@ -150,7 +150,7 @@ class EmbedLlamaForRankLM(MetaLM, LlamaForCausalLM):
             inputs_embeds=inputs_embeds,
             max_new_tokens=extra_text_embeddings.shape[1],
             do_sample=False,
-            num_beams=20,
+            num_beams=1,
             prefix_allowed_tokens_fn=lambda _, prev_ids: list(set([x + self.oringinal_vocab_size for x in range(extra_text_embeddings.shape[1])]) - set(prev_ids.tolist())),
             pad_token_id=self.config.eos_token_id,
         )
