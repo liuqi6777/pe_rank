@@ -78,7 +78,7 @@ class Encoder(nn.Module):
             elif self.pooling == 'cls':
                 embeddings = outputs.last_hidden_state[:, 0]
             elif self.pooling == 'last_token':
-                embeddings = outputs.last_hidden_state[torch.arange(batch_inputs['attention_mask'].shape[0]), 
+                embeddings = outputs.last_hidden_state[torch.arange(batch_inputs['attention_mask'].shape[0], device=outputs.last_hidden_state.device), 
                                                        batch_inputs['attention_mask'].sum(-1) - 1]
             all_embeddings.append(embeddings)
         all_embeddings = torch.cat(all_embeddings, dim=0)
