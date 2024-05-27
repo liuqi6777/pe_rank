@@ -42,12 +42,6 @@ class DataArguments:
     eval_data_path: str = field(
         default=None, metadata={"help": "Path to the evaluation data."}
     )
-    conversation_template: str = field(
-        default="vicuna", metadata={"help": "The conversation template to use."}
-    )
-    lazy_loading: bool = field(
-        default=False, metadata={"help": "Whether to use lazy loading."}
-    )
 
 
 @dataclass
