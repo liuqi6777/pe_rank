@@ -1,1 +1,2 @@
 from modeling.causal_lm.modeling_llama import EmbedLlamaForCausalLM
+from modeling.causal_lm.modeling_mistral import EmbedMistralForCausalLM
