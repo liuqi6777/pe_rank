@@ -39,7 +39,7 @@ def _get_messages_length(
     return tokenizer.apply_chat_template(
         messages,
         return_tensors='pt',
-        max_length=4096,
+        max_length=tokenizer.model_max_length,
         truncation=True
     ).shape[1]
 
@@ -48,14 +48,13 @@ def _mask_targets_for_causal_lm(
     tokenizer: transformers.PreTrainedTokenizer,
     messages: list[dict[str, str]],
     targets: Tensor,
-    max_seq_length: int = 4096,
 ) -> Tensor:
     for message_idx, message in enumerate(messages):
         if message["role"] != "assistant":
             message_start_idx = _get_messages_length(messages[:message_idx], tokenizer) if message_idx > 0 else 0
             message_end_idx = _get_messages_length(messages[:message_idx+1], tokenizer)         
             targets[:, message_start_idx:message_end_idx] = IGNORE_TOKEN_ID
-            if message_end_idx >= max_seq_length:
+            if message_end_idx >= tokenizer.model_max_length:
                 break
     return targets
 
