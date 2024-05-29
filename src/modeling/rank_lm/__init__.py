@@ -1,1 +1,2 @@
 from modeling.rank_lm.modeling_llama import EmbedLlamaConfig, EmbedLlamaModel, EmbedLlamaForRankLM
+from modeling.rank_lm.modeling_mistral import EmbedMistralConfig, EmbedMistralModel, EmbedMistralForRankLM
