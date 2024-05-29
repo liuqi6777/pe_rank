@@ -9,8 +9,8 @@ import transformers
 from arguments import ModelArguments, DataArguments, TrainingArguments, LoraArguments
 from data import make_data_module
 from metrics import compute_metrics
-from modeling.causal_lm import EmbedLlamaForCausalLM
-from modeling.rank_lm import EmbedLlamaForRankLM
+from modeling.causal_lm import EmbedLlamaForCausalLM, EmbedMistralForCausalLM
+from modeling.rank_lm import EmbedLlamaForRankLM, EmbedMistralForRankLM
 from modeling.rank_lm.loss import set_loss_function
 from trainer import Trainer
 from utils import *
@@ -52,7 +52,7 @@ def train():
     # Set up model
     if model_args.encoder_name:
         if model_args.model_type == "causal_lm":
-            model = EmbedLlamaForCausalLM.from_pretrained(
+            model = EmbedMistralForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
                 attn_implementation=training_args.attn_implementation,
@@ -60,7 +60,7 @@ def train():
             )
             model.generation_config.do_sample = True
         elif model_args.model_type == "rank_lm":
-            model = EmbedLlamaForRankLM.from_pretrained(
+            model = EmbedMistralForRankLM.from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
                 attn_implementation=training_args.attn_implementation,

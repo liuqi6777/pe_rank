@@ -6,8 +6,8 @@ from peft import PeftModel, PeftConfig
 
 from constants import PLACEHOLDER
 from modeling.encoder import Encoder, build_projector
-from modeling.causal_lm import EmbedLlamaForCausalLM
-from modeling.rank_lm import EmbedLlamaForRankLM
+from modeling.causal_lm import EmbedLlamaForCausalLM, EmbedMistralForCausalLM
+from modeling.rank_lm import EmbedLlamaForRankLM, EmbedMistralForRankLM
 
 
 def load_from_hf(repo_id, filename, subfolder=None):
@@ -19,7 +19,7 @@ def load_pretrained_model(
     model_path,
     model_base=None,
     model_name=None,
-    model_type="rank_lm",
+    model_type="causal_lm",
     load_8bit=False,
     load_4bit=False,
     device_map="auto",
@@ -49,7 +49,7 @@ def load_pretrained_model(
         kwargs['attn_implementation'] = 'flash_attention_2'
 
     if 'embed' in model_name.lower():
-        model_cls = EmbedLlamaForRankLM if model_type == "rank_lm" else EmbedLlamaForCausalLM
+        model_cls = EmbedMistralForRankLM if model_type == "rank_lm" else  EmbedMistralForCausalLM
         if os.path.exists(os.path.join(model_path, 'adapter_config.json')):
             # load lora model
             lora_cfg_pretrained = PeftConfig.from_pretrained(model_path)
@@ -93,15 +93,17 @@ def load_pretrained_model(
             # this may be projector only
             print('Loading model from base model...')
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
+            tokenizer.pad_token = tokenizer.eos_token
             cfg_pretrained = AutoConfig.from_pretrained(model_path)
             cfg_pretrained.vocab_size = len(tokenizer)
             model = model_cls.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
              # now didn't initialize addintional token embeddings, encoder, and projector
             # initialize them manually as follows
             model.initialize_tokenizer(tokenizer)
+            print('Loading encoder...')
             model.get_model().encoder = Encoder(cfg_pretrained.encoder_name, cfg_pretrained).cuda()
+            print('Loading projector...')
             model.get_model().projector = build_projector(cfg_pretrained).cuda()
-
             projector_weights = torch.load(os.path.join(model_path, 'projector.bin'), map_location='cpu')
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
             model.load_state_dict(projector_weights, strict=False)
