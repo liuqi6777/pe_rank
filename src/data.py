@@ -142,12 +142,17 @@ class DatasetForCausalLM(SFTDataset):
 class DatasetForRanking(SFTDataset):
 
     def __getitem__(self, i) -> dict[str, Tensor]:
+        messages = self.raw_data[i]["messages"]
+        ranking = torch.tensor(self.raw_data[i]["ranking"], dtype=torch.long)
+        if messages[-1]["role"] == "assistant":
+            messages[-1]["content"] = f"{RANK_TOKEN}" * len(ranking)
+        else:
+            messages.append({"role": "assistant", "content": f"{RANK_TOKEN}" * len(ranking)})
         ret = preprocess_messages(
             self.tokenizer,
-            self.raw_data[i]["messages"],
+            messages,
             _mask_targets_for_ranking
         )
-        ranking = Tensor(self.raw_data[i]["ranking"])
         ret = dict(
             input_ids=ret["input_ids"][0],
             labels=ret["labels"][0],
