@@ -29,7 +29,7 @@ class EmbedMistralForCausalLM(MetaLM, MistralForCausalLM):
         super(MistralForCausalLM, self).__init__(config)
         self.model = EmbedMistralModel(config)
 
-        self.vocab_size = config.vocab_size
+        self.vocab_size = self.original_vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
@@ -117,7 +117,7 @@ class EmbedMistralForCausalLM(MetaLM, MistralForCausalLM):
                 _,
                 inputs_embeds,
                 _,
-                _,
+                extra_text_embeddings,
                 _,
             ) = self.prepare_inputs_labels_embeddings(
                 inputs,
@@ -128,6 +128,12 @@ class EmbedMistralForCausalLM(MetaLM, MistralForCausalLM):
                 extra_text_input_ids=extra_text_input_ids,
                 extra_text_attention_mask=extra_text_attention_mask
             )
+
+            n = extra_text_embeddings.shape[1]
+            if self.vocab_size < self.original_vocab_size + n:
+                self.resize_token_embeddings(self.original_vocab_size + n)
+            self.get_input_embeddings().weight.data[self.original_vocab_size:] = extra_text_embeddings
+            self.get_output_embeddings().weight.data[self.original_vocab_size:] = extra_text_embeddings
         else:
             inputs_embeds = self.get_model().embed_tokens(inputs)
 
