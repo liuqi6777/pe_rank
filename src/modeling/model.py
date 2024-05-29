@@ -12,20 +12,12 @@ class ELMMetaModel:
         if hasattr(config, 'encoder_name'):
             self.encoder = Encoder(config.encoder_name, config)
             self.projector = build_projector(config)
-            # self.set_encoder_head()
 
     def get_encoder(self):
         return getattr(self, 'encoder', None)
 
     def get_projector(self):
         return getattr(self, 'projector', None)
-
-    def get_encoder_head(self):
-        return getattr(self, 'encoder_head', None)
-
-    def set_encoder_head(self):
-        print("Initialized encoder head with pre-trained projector weights")
-        self.encoder_head = deepcopy(self.projector)
 
     def initialize_modules(self, model_args):
         encoder_name = model_args.encoder_name
@@ -61,4 +53,4 @@ class ELMMetaModel:
         embeddings = self.get_encoder()(**inputs)
         project_as_token_embeddings = self.get_projector()(embeddings)
         # no need to normalize to align with the original token embedding space
-        return project_as_token_embeddings, project_as_token_embeddings
+        return project_as_token_embeddings

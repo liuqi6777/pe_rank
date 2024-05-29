@@ -49,18 +49,17 @@ class MetaLM:
             assert num_extra_texts <= extra_text_input_ids.shape[0]
             extra_text_input_ids = extra_text_input_ids[:num_extra_texts]
             extra_text_attention_masks = extra_text_attention_masks[:num_extra_texts]
-            project_as_token_embeddings, project_text_embeddings = self.get_model().encode_texts(
+            project_text_embeddings = self.get_model().encode_texts(
                 input_ids=extra_text_input_ids, attention_mask=extra_text_attention_masks)
 
             cur_input_embeds = self.get_model().embed_tokens(cur_input_ids.to(self.get_model().device))
             new_input_embeds = cur_input_embeds.clone()
-            project_as_token_embeddings = project_as_token_embeddings.to(new_input_embeds.device)
+            project_text_embeddings = project_text_embeddings.to(new_input_embeds.device)
 
             text_as_token_indices = (cur_input_ids == PLACEHOLDER_ID) | (cur_input_ids == RANK_TOKEN_ID)
-            new_input_embeds[text_as_token_indices] = project_as_token_embeddings.to(cur_input_embeds.dtype)
+            new_input_embeds[text_as_token_indices] = project_text_embeddings.to(cur_input_embeds.dtype)
             input_embeddings.append(new_input_embeds)
 
-            project_text_embeddings = project_text_embeddings.to(new_input_embeds.device)
             all_text_embeddings.append(
                 project_text_embeddings[:(cur_input_ids == PLACEHOLDER_ID).sum().item(), :])
 
