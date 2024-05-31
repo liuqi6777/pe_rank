@@ -25,7 +25,7 @@ class ModelArguments:
     freeze_backbone: bool = field(default=False)
     freeze_embedding_layer: bool = field(default=False)
     tune_mlp_adapter: bool = field(default=False)
-    encoder_name: Optional[str] = field(default="jinaai/jina-embeddings-v2-base-en")
+    encoder_name: Optional[str] = field(default=None)
     encoder_pooling: Optional[str] = field(
         default="mean", metadata={"help": "mean or cls"}
     )

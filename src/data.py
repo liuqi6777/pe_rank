@@ -83,7 +83,7 @@ class SFTDataset(Dataset):
         if not self.tokenizer.pad_token:
             tokenizer.pad_token = tokenizer.eos_token
         self.encoder_tokenizer = encoder_tokenizer
-        if self.encoder_tokenizer.eos_token:
+        if self.encoder_tokenizer and self.encoder_tokenizer.eos_token:
             print("WARNING: will add eos token to the end of extra texts")
             self.encoder_tokenizer.pad_token = self.encoder_tokenizer.eos_token
         self.raw_data = self.load_data(data_path)

@@ -70,7 +70,7 @@ def train():
         else:
             raise ValueError(f"Invalid model type: {model_args.model_type}")
     else:
-        model = transformers.LlamaForCausalLM.from_pretrained(
+        model = transformers.MistralForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
             attn_implementation=training_args.attn_implementation,
@@ -159,7 +159,7 @@ def train():
     # Load data
     data_module = make_data_module(
         tokenizer=tokenizer,
-        encoder_tokenizer=encoder_tokenizer,
+        encoder_tokenizer=None if not model_args.encoder_name else encoder_tokenizer,
         data_args=data_args,
         model_type=model_args.model_type,
     )
