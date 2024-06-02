@@ -12,7 +12,7 @@ from metrics import compute_metrics
 from modeling.causal_lm import EmbedLlamaForCausalLM, EmbedMistralForCausalLM
 from modeling.rank_lm import EmbedLlamaForRankLM, EmbedMistralForRankLM
 from modeling.rank_lm.loss import set_loss_function
-from trainer import Trainer
+from trainer import Trainer, RankTrainer
 from utils import *
 
 
@@ -152,6 +152,8 @@ def train():
                 output.requires_grad_(True)
             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
+        training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
+
     if model_args.freeze_embedding_layer:
         for p in model.get_input_embeddings().parameters():
             p.requires_grad = False
@@ -165,9 +167,17 @@ def train():
     )
 
     # Start trainner
-    trainer = Trainer(
-        model=model, tokenizer=tokenizer, args=training_args, compute_metrics=compute_metrics, **data_module
-    )
+    if model_args.model_type == "causal_lm":
+        trainer = Trainer(
+            model=model, tokenizer=tokenizer, args=training_args, compute_metrics=compute_metrics, **data_module
+        )
+    elif model_args.model_type == "rank_lm":
+        trainer = RankTrainer(
+            model=model, tokenizer=tokenizer, args=training_args, compute_metrics=compute_metrics, **data_module
+        )
+    else:
+        raise ValueError(f"Invalid model type: {model_args.model_type}")
+
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
     else:

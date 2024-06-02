@@ -31,7 +31,7 @@ class ModelArguments:
     )
     pretrain_mlp_adapter: Optional[str] = field(default=None)
     projector_type: Optional[str] = field(default='linear')
-    loss_type: Optional[str] = field(default='listnet-1')
+    loss_type: Optional[str] = field(default='plistmle')
 
 
 @dataclass
@@ -42,6 +42,8 @@ class DataArguments:
     eval_data_path: str = field(
         default=None, metadata={"help": "Path to the evaluation data."}
     )
+    use_embedding_with_content: bool = field(default=True)
+    use_embedding_without_content: bool = field(default=False)
 
 
 @dataclass
@@ -61,6 +63,8 @@ class TrainingArguments(HFTrainingArguments):
             "help": "The implementation of attention. Can be 'flash_attention_2'."
         },
     )
+
+    kl_loss_weight: float = field(default=0.0)
 
 
 @dataclass

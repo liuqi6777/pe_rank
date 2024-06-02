@@ -140,25 +140,58 @@ class DatasetForCausalLM(SFTDataset):
 
 
 class DatasetForRanking(SFTDataset):
+    
+    def __init__(
+        self,
+        data_path: str,
+        tokenizer: transformers.PreTrainedTokenizer,
+        encoder_tokenizer: transformers.PreTrainedTokenizer,
+        use_embedding_with_content: bool = True,
+        use_embedding_without_content: bool = False,
+    ):
+        super().__init__(data_path, tokenizer, encoder_tokenizer)
+        self.use_embedding_with_content = use_embedding_with_content
+        self.use_embedding_without_content = use_embedding_without_content
 
     def __getitem__(self, i) -> dict[str, Tensor]:
-        messages = self.raw_data[i]["messages"]
         ranking = torch.tensor(self.raw_data[i]["ranking"], dtype=torch.long)
-        if messages[-1]["role"] == "assistant":
-            messages[-1]["content"] = f"{RANK_TOKEN}" * len(ranking)
+
+        if self.use_embedding_with_content:
+            messages_w_content = self.raw_data[i]["messages_w_content"]
+            if messages_w_content[-1]["role"] == "assistant":
+                messages_w_content[-1]["content"] = f"{RANK_TOKEN}" * len(ranking)
+            else:
+                messages_w_content.append({"role": "assistant", "content": f"{RANK_TOKEN}" * len(ranking)})
+            inputs_w_content = preprocess_messages(
+                self.tokenizer,
+                messages_w_content,
+                _mask_targets_for_ranking
+            )
+            inputs_w_content = dict(
+                input_ids=inputs_w_content["input_ids"][0],
+                labels=inputs_w_content["labels"][0],
+                attention_mask=inputs_w_content["attention_mask"][0],
+            )
         else:
-            messages.append({"role": "assistant", "content": f"{RANK_TOKEN}" * len(ranking)})
-        ret = preprocess_messages(
-            self.tokenizer,
-            messages,
-            _mask_targets_for_ranking
-        )
-        ret = dict(
-            input_ids=ret["input_ids"][0],
-            labels=ret["labels"][0],
-            attention_mask=ret["attention_mask"][0],
-            ranking=ranking,
-        )
+            inputs_w_content = None
+        if self.use_embedding_without_content:
+            messages_wo_content = self.raw_data[i]["messages_wo_content"]
+            if messages_wo_content[-1]["role"] == "assistant":
+                messages_wo_content[-1]["content"] = f"{RANK_TOKEN}" * len(ranking)
+            else:
+                messages_wo_content.append({"role": "assistant", "content": f"{RANK_TOKEN}" * len(ranking)})
+            inputs_wo_content = preprocess_messages(
+                self.tokenizer,
+                messages_wo_content,
+                _mask_targets_for_ranking
+            )
+            inputs_wo_content = dict(
+                input_ids=inputs_wo_content["input_ids"][0],
+                labels=inputs_wo_content["labels"][0],
+                attention_mask=inputs_wo_content["attention_mask"][0],
+            )
+        else:
+            inputs_wo_content = None
         if "extra_texts" in self.raw_data[i]:
             if self.encoder_tokenizer.eos_token:
                 self.raw_data[i]["extra_texts"] = [
@@ -171,13 +204,23 @@ class DatasetForRanking(SFTDataset):
                 max_length=128,
                 truncation=True,
             )
-            ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
+            extra_text_inputs = dict(
+                input_ids=extra_text_inputs["input_ids"],
+            )
+        else:
+            extra_text_inputs = None
+        ret = dict(
+            inputs_w_content=inputs_w_content,
+            inputs_wo_content=inputs_wo_content,
+            extra_text_inputs=extra_text_inputs,
+            ranking=ranking,
+        )
 
         return ret
 
 
 @dataclass
-class DataCollator:
+class DataCollatorForCausalLM:
     tokenizer: transformers.PreTrainedTokenizer
     encoder_tokenizer: transformers.PreTrainedTokenizer
 
@@ -201,12 +244,8 @@ class DataCollator:
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
         )
 
-        if instances[0].get("ranking", None) is not None:
-            batch["ranking"] = torch.stack([instance["ranking"] for instance in instances])
-
-        if instances[0].get("extra_text_input_ids", None) is not None:
-            extra_text_input_ids = [
-                instance["extra_text_input_ids"] for instance in instances]
+        if instances[0].get("extra_text_inputs", None) is not None:
+            extra_text_input_ids = [instance["extra_text_inputs"]["input_ids"] for instance in instances]
             extra_text_input_ids = torch.nn.utils.rnn.pad_sequence(
                 extra_text_input_ids,
                 batch_first=True,
@@ -217,33 +256,111 @@ class DataCollator:
         return batch
 
 
+@dataclass
+class DataCollatorForRanking:
+    tokenizer: transformers.PreTrainedTokenizer
+    encoder_tokenizer: transformers.PreTrainedTokenizer
+
+    def __call__(self, instances: Sequence[dict]) -> dict[str, Tensor]:
+        batch = dict()
+
+        if instances[0].get("inputs_w_content", None) is not None:
+            input_ids, labels = tuple(
+                [instance["inputs_w_content"][key] for instance in instances] for key in ("input_ids", "labels")
+            )
+            input_ids = torch.nn.utils.rnn.pad_sequence(
+                input_ids,
+                batch_first=True,
+                padding_value=self.tokenizer.pad_token_id)
+            labels = torch.nn.utils.rnn.pad_sequence(
+                labels,
+                batch_first=True,
+                padding_value=IGNORE_TOKEN_ID
+            )
+            input_ids = input_ids[:, :self.tokenizer.model_max_length]
+            labels = labels[:, :self.tokenizer.model_max_length]
+            batch["inputs_w_content"] = dict(
+                input_ids=input_ids,
+                labels=labels,
+                attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
+            )
+
+        if instances[0].get("inputs_wo_content", None) is not None:
+            input_ids, labels = tuple(
+                [instance["inputs_wo_content"][key] for instance in instances] for key in ("input_ids", "labels")
+            )
+            input_ids = torch.nn.utils.rnn.pad_sequence(
+                input_ids,
+                batch_first=True,
+                padding_value=self.tokenizer.pad_token_id)
+            labels = torch.nn.utils.rnn.pad_sequence(
+                labels,
+                batch_first=True,
+                padding_value=IGNORE_TOKEN_ID
+            )
+            input_ids = input_ids[:, :self.tokenizer.model_max_length]
+            labels = labels[:, :self.tokenizer.model_max_length]
+            batch["inputs_wo_content"] = dict(
+                input_ids=input_ids,
+                labels=labels,
+                attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
+            )
+
+        if instances[0].get("extra_text_inputs", None) is not None:
+            extra_text_input_ids = [instance["extra_text_inputs"]["input_ids"] for instance in instances]
+            extra_text_input_ids = torch.nn.utils.rnn.pad_sequence(
+                extra_text_input_ids,
+                batch_first=True,
+                padding_value=self.encoder_tokenizer.pad_token_id
+            )
+            batch["extra_text_inputs"] = dict(
+                extra_text_input_ids=extra_text_input_ids,
+                extra_text_attention_mask=extra_text_input_ids.ne(self.encoder_tokenizer.pad_token_id)
+            )
+
+        batch["ranking"] = torch.stack([instance["ranking"] for instance in instances])
+
+        return batch
+
+
 def make_data_module(
     tokenizer: transformers.PreTrainedTokenizer,
     encoder_tokenizer: transformers.PreTrainedTokenizer,
     data_args,
     model_type: str,
 ) -> dict:
-    dataset_cls = DatasetForCausalLM if model_type == "causal_lm" else DatasetForRanking
-    train_dataset = dataset_cls(
-        data_args.data_path,
-        tokenizer=tokenizer,
-        encoder_tokenizer=encoder_tokenizer,
-    )
-    data_collator = DataCollator(
+    if model_type == "causal_lm":
+        train_dataset = DatasetForCausalLM(
+            data_args.data_path,
+            tokenizer=tokenizer,
+            encoder_tokenizer=encoder_tokenizer,
+        )
+    else:
+        train_dataset = DatasetForRanking(
+            data_args.data_path,
+            tokenizer=tokenizer,
+            encoder_tokenizer=encoder_tokenizer,
+            use_embedding_with_content=data_args.use_embedding_with_content,
+            use_embedding_without_content=data_args.use_embedding_without_content,
+        )
+    data_collator_cls = DataCollatorForCausalLM if model_type == "causal_lm" else DataCollatorForRanking
+    data_collator = data_collator_cls(
         tokenizer=tokenizer,
         encoder_tokenizer=encoder_tokenizer
     )
-    if data_args.eval_data_path:
-        eval_dataset = dataset_cls(
-            data_args.eval_data_path,
-            tokenizer=tokenizer,
-            encoder_tokenizer=encoder_tokenizer
-        )
-    else:
-        eval_dataset = None
+
+    # TODO: make eval_dataset available
+    # if data_args.eval_data_path:
+    #     eval_dataset = dataset_cls(
+    #         data_args.eval_data_path,
+    #         tokenizer=tokenizer,
+    #         encoder_tokenizer=encoder_tokenizer
+    #     )
+    # else:
+    #     eval_dataset = None
 
     return dict(
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        eval_dataset=None,
         data_collator=data_collator
     )
