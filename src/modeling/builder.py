@@ -56,12 +56,14 @@ def load_pretrained_model(
             if not model_base:
                 model_base = lora_cfg_pretrained.base_model_name_or_path
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
+            tokenizer.pad_token = tokenizer.eos_token
             cfg_pretrained = AutoConfig.from_pretrained(model_path)
             cfg_pretrained.vocab_size = len(tokenizer)
             model = model_cls.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
             # now didn't initialize addintional token embeddings, encoder, and projector
             # initialize them manually as follows
             model.initialize_tokenizer(tokenizer)
+            model.original_vocab_size = len(tokenizer)
             model.get_model().encoder = Encoder(cfg_pretrained.encoder_name, cfg_pretrained).cuda()
             model.get_model().projector = build_projector(cfg_pretrained).cuda()
 
@@ -100,6 +102,7 @@ def load_pretrained_model(
              # now didn't initialize addintional token embeddings, encoder, and projector
             # initialize them manually as follows
             model.initialize_tokenizer(tokenizer)
+            model.original_vocab_size = len(tokenizer)
             print('Loading encoder...')
             model.get_model().encoder = Encoder(cfg_pretrained.encoder_name, cfg_pretrained).cuda()
             print('Loading projector...')
@@ -107,7 +110,6 @@ def load_pretrained_model(
             projector_weights = torch.load(os.path.join(model_path, 'projector.bin'), map_location='cpu')
             projector_weights = {k: v.to(torch.float16) for k, v in projector_weights.items()}
             model.load_state_dict(projector_weights, strict=False)
-            # model.get_model().set_encoder_head()
         else:
             print(f'Loading model from {model_path}...')
             tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
