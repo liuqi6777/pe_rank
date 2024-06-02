@@ -156,7 +156,7 @@ class ListMLELoss(nn.Module):
 
         label_mask, ranking_mask, weights = make_mask_with_labels(shift_labels, ranking, weighted=self.weighted)
         labels = rank_minus_one(ranking).view(-1)
-        shift_logits[ranking_mask == 0] = float("-inf")
+        shift_logits[ranking_mask == 0] = -1e9  # don't set to -inf, otherwise it will cause NaN
         shift_logits = shift_logits[label_mask.sum(-1).bool()]
         logprob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], -1)
         loss = torch.sum(logprob * weights, dim=-1).mean()
