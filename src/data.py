@@ -134,7 +134,9 @@ class DatasetForCausalLM(SFTDataset):
                 max_length=128,
                 truncation=True,
             )
-            ret["extra_text_input_ids"] = extra_text_inputs["input_ids"]
+            ret["extra_text_inputs"] = dict(
+                input_ids=extra_text_inputs["input_ids"],
+            )
 
         return ret
 
