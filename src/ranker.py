@@ -9,11 +9,11 @@ PLACEHOLDER = "<PLACEHOLDER>"
 
 
 class Ranker:
-    def __init__(self, model_path, model_base):
+    def __init__(self, model_path, model_base, model_name="embed_mistral"):
         self._tokenizer, self._model, _ = load_pretrained_model(
             model_path=model_path,
             model_base=model_base,
-            model_name="embed_mistral",
+            model_name=model_name,
             device_map="cuda",
         )
         self.model_name = model_path
@@ -53,29 +53,6 @@ Rank the {num} relatively ordered passages above based on their relevance to the
 
     def _replace_number(self, s: str) -> str:
         return re.sub(r"\[(\d+)\]", r"(\1)", s)
-
-    def parse_output(self, output: str) -> list[int]:
-        response = self._clean_response(output)
-        response = [int(x) - 1 for x in response.split()]
-        response = self._remove_duplicate(response)
-        return response
-
-    def _clean_response(self, response: str) -> str:
-        new_response = ""
-        for c in response:
-            if not c.isdigit():
-                new_response += " "
-            else:
-                new_response += c
-        new_response = new_response.strip()
-        return new_response
-
-    def _remove_duplicate(self, response: list[int]) -> list[int]:
-        new_response = []
-        for c in response:
-            if c not in new_response:
-                new_response.append(c)
-        return new_response
 
     def _get_message(self, query: str, candidates: list[str]) -> str:
         num = len(candidates)
@@ -141,6 +118,62 @@ Rank the {num} relatively ordered passages above based on their relevance to the
 class ListwiseEmbeddingRanker(ListwiseTextEmbeddingRanker):
     def _get_input_for_one_passage(self, content: str, i: int) -> str:
         return f"Passage {i}: [<PLACEHOLDER>]\n\n"
+
+
+class ListwiseTextRanker(ListwiseTextEmbeddingRanker):
+    def _get_input_for_one_passage(self, content: str, i: int) -> str:
+        return f"[{i}]: {content}\n\n"
+
+    def _add_prefix_prompt(self, query: str, num: int) -> str:
+        return f"""I will provide you with {num} passages.
+Rank the passages based on their relevance to the search query: {query}.
+"""
+
+    def _add_post_prompt(self, query: str, num: int) -> str:
+        return f"""Search Query: {query}.
+Rank the {num} relatively ordered passages above based on their relevance to the search query, output the ranking in descending order. The output format should be [] > [] > ..., e.g., [4] > [2] > ..., Only respond with the ranking results with {num} unique numbers, do not say anything else or explain.
+
+"""
+
+    def parse_output(self, output: str) -> list[int]:
+        response = self._clean_response(output)
+        response = [int(x) - 1 for x in response.split()]
+        response = self._remove_duplicate(response)
+        return response
+
+    def _clean_response(self, response: str) -> str:
+        new_response = ""
+        for c in response:
+            if not c.isdigit():
+                new_response += " "
+            else:
+                new_response += c
+        new_response = new_response.strip()
+        return new_response
+
+    def _remove_duplicate(self, response: list[int]) -> list[int]:
+        new_response = []
+        for c in response:
+            if c not in new_response:
+                new_response.append(c)
+        return new_response
+
+    def __call__(self, query: str, candidates: list[str]) -> dict[str]:
+        input_ids = self._get_llm_inputs(query, candidates)
+
+        outputs = self._model.generate(
+            input_ids,
+            max_new_tokens=256,
+            do_sample=False,
+            pad_token_id=self._model.config.eos_token_id,
+        )
+        outputs = self._tokenizer.decode(outputs[0, input_ids.shape[1]:], skip_special_tokens=True)
+
+        permutation = self.parse_output(outputs)
+        original_rank = [tt for tt in range(len(candidates))]
+        permutation = [ss for ss in permutation if ss in original_rank]
+        permutation = permutation + [tt for tt in original_rank if tt not in permutation]
+        return permutation
 
 
 class PointwiseTextRanker(Ranker):

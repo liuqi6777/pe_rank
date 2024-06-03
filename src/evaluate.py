@@ -32,6 +32,12 @@ def eval_model(args):
             model_path=args.model_path,
             model_base=args.model_base,
         )
+    elif args.ranker == "listwise-text":
+        ranking_model = ListwiseTextRanker(
+            model_path=args.model_path,
+            model_base=args.model_base,
+            model_name="mistral"
+        )
     else:
         raise ValueError(f"Ranker {args.ranker} not supported")
 
@@ -78,7 +84,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--ranker", type=str, default="listwise-text-embedding",
-        choices=["listwise-text-embedding", "listwise-embedding"]
+        choices=["listwise-text-embedding", "listwise-embedding", "listwise-text"]
     )
     parser.add_argument("--topk", type=int, default=100)
     parser.add_argument("--overwrite", action="store_true")
