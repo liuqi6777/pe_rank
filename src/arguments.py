@@ -64,6 +64,8 @@ class TrainingArguments(HFTrainingArguments):
         },
     )
 
+    loss1_weight: float = field(default=1.0)
+    loss2_weight: float = field(default=1.0)
     kl_loss_weight: float = field(default=0.0)
 
 

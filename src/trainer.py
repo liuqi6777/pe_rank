@@ -62,7 +62,7 @@ class RankTrainer(Trainer):
             loss2, logits2 = None, None
 
         if self.args.kl_loss_weight > 0 and loss1 is not None and loss2 is not None:
-            loss = loss1 + loss2
+            loss = self.args.loss1_weight * loss1 + self.args.loss2_weight * loss2
             kl_loss = torch.nn.functional.kl_div(
                 input=torch.log_softmax(logits1, dim=-1),
                 target=torch.log_softmax(logits2, dim=-1),
@@ -71,7 +71,8 @@ class RankTrainer(Trainer):
             )
             loss += self.args.kl_loss_weight * kl_loss
         else:
-            loss = loss1 + loss2 if (loss1 and loss2) else (loss1 or loss2)
+            loss = self.args.loss1_weight * loss1 + self.args.loss2_weight * loss2 \
+                if (loss1 and loss2) else (loss1 or loss2)
 
         outputs = {
             "loss": loss,
