@@ -16,6 +16,9 @@ def preprocess_messages(
     messages: list[dict[str, str]],
     mask_targets_func: Callable[[list[dict[str, str]], Tensor], Tensor],
 ) -> dict[str, Tensor]:
+    if messages[-1]["role"] == "assistant":
+        if messages[-1]["content"].startswith("["):
+            messages[-1]["content"] = ' ' + messages[-1]["content"]
     input_ids = tokenizer.apply_chat_template(
         messages,
         return_tensors="pt",
