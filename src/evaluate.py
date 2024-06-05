@@ -80,7 +80,7 @@ if __name__ == "__main__":
     parser.add_argument("--datasets", nargs="+", default=["dl19", "dl20"])
     parser.add_argument(
         "--retriever", type=str, default="bm25",
-        choices=["bm25", "jina-embeddings-v2-base-en", "e5-mistral", "splade++ed"]
+        choices=["bm25", "jina-embeddings-v2-base-en", "e5-mistral", "splade++ed", "bge-base-en-v1.5"]
     )
     parser.add_argument(
         "--ranker", type=str, default="listwise-text-embedding",
