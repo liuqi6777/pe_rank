@@ -51,6 +51,8 @@ def eval_model(args):
             print(f"{output_file} exists, skipping")
             trec_eval(TOPICS[dataset], output_file)
             continue
+        if os.path.exists(output_file) and args.overwrite:
+            output_file = output_file.replace(".txt", "_1.txt")
 
         input_file = os.path.join(
             "results", "retrieval_results", args.retriever,
