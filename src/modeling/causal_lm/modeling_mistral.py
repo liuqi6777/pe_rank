@@ -130,8 +130,9 @@ class EmbedMistralForCausalLM(MetaLM, MistralForCausalLM):
             )
 
             n = extra_text_embeddings.shape[1]
-            if self.vocab_size < self.original_vocab_size + n:
+            if self.vocab_size != self.original_vocab_size + n:
                 self.resize_token_embeddings(self.original_vocab_size + n)
+            assert self.vocab_size == self.original_vocab_size + n
             self.get_input_embeddings().weight.data[self.original_vocab_size:] = extra_text_embeddings
             self.get_output_embeddings().weight.data[self.original_vocab_size:] = extra_text_embeddings
         else:
