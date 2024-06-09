@@ -126,10 +126,10 @@ class ListwiseEmbeddingRanker(ListwiseTextEmbeddingRanker):
 
 
 class ListwiseTextRanker(ListwiseTextEmbeddingRanker):
-    def _get_input_for_one_passage(self, content: str, i: int, passage_max_length: int = 180) -> str:
+    def _get_input_for_one_passage(self, content: str, i: int, passage_max_length: int = 100) -> str:
         if len(self._tokenizer.tokenize(content)) > passage_max_length:
             content = " ".join(self._tokenizer.tokenize(content)[:passage_max_length])
-        return f"[{i}]: {content}\n\n"
+        return f"Passage {i}: {content}\n\n"
 
     def _add_prefix_prompt(self, query: str, num: int) -> str:
         return f"""I will provide you with {num} passages.
@@ -175,6 +175,7 @@ Rank the {num} relatively ordered passages above based on their relevance to the
             pad_token_id=self._model.config.eos_token_id,
         )
         outputs = self._tokenizer.decode(outputs[0, input_ids.shape[1]:], skip_special_tokens=True)
+        print(outputs)
 
         permutation = self.parse_output(outputs)
         original_rank = [tt for tt in range(len(candidates))]
