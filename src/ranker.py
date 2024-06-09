@@ -40,10 +40,7 @@ class Ranker:
 
 class ListwiseTextEmbeddingRanker(Ranker):
 
-    def _add_prefix_prompt(self, query: str, num: int, query_max_length: int = 180) -> str:
-        # TODO: make max_length configurable
-        if len(self._tokenizer.tokenize(query)) > query_max_length:
-            query = " ".join(self._tokenizer.tokenize(query)[:query_max_length])
+    def _add_prefix_prompt(self, query: str, num: int) -> str:
         return f"""I will provide you with {num} passages, each with a special token representing the passage enclosed in [], followed by original text.
 Rank the passages based on their relevance to the search query: {query}.
 """
@@ -69,9 +66,7 @@ Rank the {num} relatively ordered passages above based on their relevance to the
         messages.append({"role": "user", "content": input_context})
         return messages
 
-    def _get_input_for_one_passage(self, content: str, i: int, passage_max_length: int = 180) -> str:
-        if len(self._tokenizer.tokenize(content)) > passage_max_length:
-            content = " ".join(self._tokenizer.tokenize(content)[:passage_max_length])
+    def _get_input_for_one_passage(self, content: str, i: int) -> str:
         return f"Passage {i}: [<PLACEHOLDER>] {content}\n\n"
 
     def _get_llm_inputs(self, query: str, candidates: list[str]) -> torch.Tensor:
@@ -81,7 +76,7 @@ Rank the {num} relatively ordered passages above based on their relevance to the
             add_generation_prompt=True,
             return_tensors="pt",
             padding="longest",
-            max_length=self._tokenizer.model_max_length,
+            max_length=32768,
             truncation=True,
         ).to(self.device)
         return input_ids
@@ -126,9 +121,7 @@ class ListwiseEmbeddingRanker(ListwiseTextEmbeddingRanker):
 
 
 class ListwiseTextRanker(ListwiseTextEmbeddingRanker):
-    def _get_input_for_one_passage(self, content: str, i: int, passage_max_length: int = 100) -> str:
-        if len(self._tokenizer.tokenize(content)) > passage_max_length:
-            content = " ".join(self._tokenizer.tokenize(content)[:passage_max_length])
+    def _get_input_for_one_passage(self, content: str, i: int) -> str:
         return f"Passage {i}: {content}\n\n"
 
     def _add_prefix_prompt(self, query: str, num: int) -> str:
