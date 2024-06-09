@@ -175,7 +175,6 @@ Rank the {num} relatively ordered passages above based on their relevance to the
             pad_token_id=self._model.config.eos_token_id,
         )
         outputs = self._tokenizer.decode(outputs[0, input_ids.shape[1]:], skip_special_tokens=True)
-        print(outputs)
 
         permutation = self.parse_output(outputs)
         original_rank = [tt for tt in range(len(candidates))]
