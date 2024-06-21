@@ -8,7 +8,6 @@ import transformers
 
 from arguments import ModelArguments, DataArguments, TrainingArguments, LoraArguments
 from data import make_data_module
-from metrics import compute_metrics
 from modeling.causal_lm import EmbedLlamaForCausalLM, EmbedMistralForCausalLM
 from modeling.rank_lm import EmbedLlamaForRankLM, EmbedMistralForRankLM
 from modeling.rank_lm.loss import set_loss_function
@@ -169,11 +168,11 @@ def train():
     # Start trainner
     if model_args.model_type == "causal_lm":
         trainer = Trainer(
-            model=model, tokenizer=tokenizer, args=training_args, compute_metrics=compute_metrics, **data_module
+            model=model, tokenizer=tokenizer, args=training_args, **data_module
         )
     elif model_args.model_type == "rank_lm":
         trainer = RankTrainer(
-            model=model, tokenizer=tokenizer, args=training_args, compute_metrics=compute_metrics, **data_module
+            model=model, tokenizer=tokenizer, args=training_args, **data_module
         )
     else:
         raise ValueError(f"Invalid model type: {model_args.model_type}")
