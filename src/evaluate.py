@@ -1,9 +1,10 @@
 import argparse
+import copy
 import json
 import os
+from typing import Optional, Callable, Any
 from tqdm import tqdm
 
-from llm4ranking.ranker.base import ListwiseSilidingWindowReranker
 from ranker import *
 
 
@@ -12,8 +13,43 @@ def write_results(rerank_results, output_file):
     with open(output_file, "w") as f:
         for i, hits in enumerate(rerank_results):
             for j, hit in enumerate(hits):
-                f.write(f"{hit['qid']} Q{i} {hit['docid']} {j + 1} {round(1 / (j + 1), 3)} rank")
+                f.write(
+                    f"{hit['qid']} Q{i} {hit['docid']} {j + 1} {round(1 / (j + 1), 3)} rank")
                 f.write("\n")
+
+
+class ListwiseSilidingWindowReranker:
+    def rerank(
+        self,
+        query: str,
+        candidates: list[str],
+        ranking_func: Callable[[str, list[str]], list[int]],
+        rank_start: int = 0,
+        rank_end: int = None,
+        window_size: Optional[int] = None,
+        step: int = 10,
+        **kwargs: dict[str, Any],
+    ) -> list[str]:
+
+        rerank_result = copy.deepcopy(candidates)
+
+        window_size = window_size or len(candidates)
+        rank_end = rank_end or len(candidates)
+        start_pos, end_pos = rank_end - window_size, rank_end
+        while end_pos > rank_start and start_pos + step != rank_start:
+            start_pos = max(start_pos, rank_start)
+            # range from 0 to window_size
+            permutation = ranking_func(query, rerank_result[start_pos:end_pos])
+
+            # receive permutation
+            cut_range = copy.deepcopy(rerank_result[start_pos:end_pos])
+            for local_rank, index in enumerate(permutation):
+                rerank_result[start_pos +
+                              local_rank] = copy.deepcopy(cut_range[index])
+
+            start_pos, end_pos = start_pos - step, end_pos - step
+
+        return rerank_result
 
 
 def eval_model(args):
@@ -21,7 +57,7 @@ def eval_model(args):
     from scripts.indexes_and_topics import TOPICS
 
     reranker = ListwiseSilidingWindowReranker()
-    
+
     if args.ranker == "listwise-text-embedding":
         ranking_model = ListwiseTextEmbeddingRanker(
             model_path=args.model_path,
@@ -84,10 +120,7 @@ if __name__ == "__main__":
         "--retriever", type=str, default="bm25",
         choices=["bm25", "jina-embeddings-v2-base-en", "e5-mistral", "splade++ed", "bge-base-en-v1.5"]
     )
-    parser.add_argument(
-        "--ranker", type=str, default="listwise-text-embedding",
-        choices=["listwise-text-embedding", "listwise-embedding", "listwise-text"]
-    )
+    parser.add_argument("--ranker", type=str, default="listwise-embedding",)
     parser.add_argument("--topk", type=int, default=100)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
