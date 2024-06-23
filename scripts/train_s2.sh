@@ -1,0 +1,35 @@
+#!/bin/bash
+
+deepspeed --include="localhost:4,5,6,7" --master_port="29700" src/train.py \
+    --deepspeed ./scripts/zero2.json \
+    --model_type rank_lm \
+    --model_name_or_path mistralai/Mistral-7B-Instruct-v0.2 \
+    --data_path ./data/train.jsonl \
+    --use_embedding_with_content True \
+    --use_embedding_without_content True \
+    --kl_loss_weight 0.2 \
+    --loss1_weight 1 \
+    --loss2_weight 1 \
+    --encoder_name jinaai/jina-embeddings-v2-base-en \
+    --encoder_pooling mean \
+    --pretrain_mlp_adapter ./checkpoints/mistral.jina.projector/projector.bin \
+    --projector_type mlp2x_gelu \
+    --tune_mlp_adapter \
+    --bf16 True \
+    --tf32 True \
+    --output_dir "./checkpoints/pe-rank-mistral-jina" \
+    --overwrite_output_dir \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 4 \
+    --gradient_accumulation_steps 2 \
+    --save_strategy "steps" \
+    --save_steps 3000 \
+    --save_total_limit 2 \
+    --learning_rate 2e-5 \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "cosine" \
+    --logging_steps 1 \
+    --model_max_length 4096 \
+    --gradient_checkpointing True \
+    --attn_implementation flash_attention_2 \
+    --dataloader_num_workers 2

@@ -1,21 +1,18 @@
 #!/bin/bash
 
-set -e
-
-export WANDB_PROJECT="embedding+llm"
-
 deepspeed --include="localhost:0,1,2,3" src/train.py \
     --deepspeed scripts/zero2.json \
-    --model_name_or_path lmsys/vicuna-7b-v1.5 \
-    --data_path ./data/wiki_dpr_pretrain.jsonl \
+    --model_name_or_path mistralai/Mistral-7B-Instruct-v0.2 \
+    --data_path ./data/wiki2m.jsonl \
     --encoder_name jinaai/jina-embeddings-v2-base-en \
+    --encoder_pooling mean \
     --projector_type mlp2x_gelu \
     --freeze_backbone \
     --tune_mlp_adapter \
     --bf16 \
-    --output_dir ./checkpoints/vicuna.jina.wiki1m.pretrain \
+    --output_dir ./checkpoints/mistral.jina.projector \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 32 \
+    --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
@@ -28,5 +25,5 @@ deepspeed --include="localhost:0,1,2,3" src/train.py \
     --tf32 True \
     --model_max_length 512 \
     --gradient_checkpointing \
-    --dataloader_num_workers 4 \
-    --report_to "wandb"
+    --attn_implementation flash_attention_2 \
+    --dataloader_num_workers 4
