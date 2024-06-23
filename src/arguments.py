@@ -31,7 +31,6 @@ class ModelArguments:
     )
     pretrain_mlp_adapter: Optional[str] = field(default=None)
     projector_type: Optional[str] = field(default='linear')
-    loss_type: Optional[str] = field(default='plistmle')
 
 
 @dataclass

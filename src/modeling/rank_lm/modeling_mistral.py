@@ -36,7 +36,7 @@ class EmbedMistralForRankLM(MetaLM, MistralForCausalLM):
         self.oringinal_vocab_size = config.vocab_size
         self.post_init()
 
-        self.loss_function = ListMLELoss(weighted="weighted_1")
+        self.loss_function = ListMLELoss()
         self.normalize_embeddings = False
 
     def forward(
