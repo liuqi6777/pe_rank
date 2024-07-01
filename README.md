@@ -9,15 +9,51 @@ Code for paper [Leveraging Passage Embeddings for Efficient Listwise Reranking w
   <b>Figure 1:</b> Comparison between RankGPT (upper) and PE-Rank (lower). RankGPT takes the whole passages as input and outputs ordered numbers, while PE-Rank takes a list of special tokens as both input and output. On the right side, we show the reranking results on DL19 using different forms of inputs.
 </p>
 
-The checkpoint of the PE-Rank model is available in this link: [PE-Rank](https://huggingface.co/liuqi6777/pe-rank-mistral-jina).
-
 ## Installation
 
 ```bash
 git clone git@github.com:liuqi6777/pe_rank.git
 ```
 
+## Evaluation
+
+The checkpoint of the PE-Rank model is available in this link: [PE-Rank](https://huggingface.co/liuqi6777/pe-rank-mistral-jina).
+
+### Retrieval
+
+We provide the scripts for first-stage retrieval, for example, you can use the following command to use BM25 as the retrieval model:
+
+```bash
+python src/scripts/run_evaluation.py --dataset dl19 --retriever bm25 --topk 100
+```
+
+This code will run the BM25 retrieval model on the DL19 dataset and save the retrieval results to `results/retrieval_results/bm25/dl19_top100.jsonl`.
+
+As alternative, we also provide all the retrieval results in this link: [https://huggingface.co/liuqi6777/pyserini_retrieval_results](https://huggingface.co/liuqi6777/pyserini_retrieval_results). You can download the retrieval results to `results/retrieval_results` folder.
+
+### Reranking
+
+To run the reranking stage, you can use the following command:
+
+```bash
+python src/evaluate.py --datasets dl19 --model-path liuqi6777/pe-rank-mistral-jina --retriever bm25 --topk 100
+```
+
+The reranking results will be saved to `results/reranking_results/eval_dl19_pe-rank-mistral-jina_top100.txt` and you can use the following compute the evaluation metrics:
+
+```bash
+python src/scripts/trec_eval.py --dataset dl19 --ranking results/reranking_results/eval_dl19_pe-rank-mistral-jina_top100.txt
+```
+
+For other datasets or other retrieval models, just replace the `--datasets` and `--retriever` arguments.
+
+### More usage
+
+Comming soon.
+
 ## Training
+
+If you want to train the PE-Rank model from scratch or using customized settings, you can follow the instructions below.
 
 ### Data Preparation
 
@@ -108,40 +144,6 @@ deepspeed --include="localhost:4,5,6,7" --master_port="29700" src/train.py \
 ```
 
 This command will run the full learning-to-rank stage.
-
-## Evaluation
-
-### Retrieval
-
-We provide the scripts for first-stage retrieval, for example, you can use the following command to use BM25 as the retrieval model:
-
-```bash
-python src/scripts/run_evaluation.py --dataset dl19 --retriever bm25 --topk 100
-```
-
-This code will run the BM25 retrieval model on the DL19 dataset and save the retrieval results to `results/retrieval_results/bm25/dl19_top100.jsonl`.
-
-As alternative, we also provide all the retrieval results in this link: [https://huggingface.co/liuqi6777/pyserini_retrieval_results](https://huggingface.co/liuqi6777/pyserini_retrieval_results). You can download the retrieval results to `results/retrieval_results` folder.
-
-### Reranking
-
-To run the reranking stage, you can use the following command:
-
-```bash
-python src/evaluate.py --datasets dl19 --model-path liuqi6777/pe-rank-mistral-jina --retriever bm25 --topk 100
-```
-
-The reranking results will be saved to `results/reranking_results/eval_dl19_pe-rank-mistral-jina_top100.txt` and you can use the following compute the evaluation metrics:
-
-```bash
-python src/scripts/trec_eval.py --dataset dl19 --ranking results/reranking_results/eval_dl19_pe-rank-mistral-jina_top100.txt
-```
-
-For other datasets or other retrieval models, just replace the `--datasets` and `--retriever` arguments.
-
-## Inference
-
-More examples will come soon.
 
 ## Citation
 
