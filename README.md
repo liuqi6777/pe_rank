@@ -39,10 +39,10 @@ To run the reranking stage, you can use the following command:
 python src/evaluate.py --datasets dl19 --model-path liuqi6777/pe-rank-mistral-jina --retriever bm25 --topk 100
 ```
 
-The reranking results will be saved to `results/reranking_results/eval_dl19_pe-rank-mistral-jina_top100.txt` and you can use the following compute the evaluation metrics:
+The reranking results will be saved to `results/rerank_results/bm25/eval_dl19_pe-rank-mistral-jina_listwise-embedding_top100.txt` and you can use the following compute the evaluation metrics:
 
 ```bash
-python src/scripts/trec_eval.py --dataset dl19 --ranking results/reranking_results/eval_dl19_pe-rank-mistral-jina_top100.txt
+python src/scripts/trec_eval.py --dataset dl19 --ranking results/rerank_results/bm25/eval_dl19_pe-rank-mistral-jina_listwise-embedding_top100.txt
 ```
 
 For other datasets or other retrieval models, just replace the `--datasets` and `--retriever` arguments.
