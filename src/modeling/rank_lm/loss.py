@@ -63,6 +63,6 @@ class ListMLELoss(nn.Module):
         labels = self._rank_minus_one(ranking).view(-1)
         shift_logits[ranking_mask == 0] = -1e9  # don't set to -inf, otherwise it will cause NaN
         shift_logits = shift_logits[label_mask.sum(-1).bool()]
-        logprob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], -1)
-        loss = torch.sum(logprob, dim=-1).mean()
+        logprob = torch.nn.functional.cross_entropy(shift_logits, labels, reduce=False).view(ranking.shape[0], -1).float()
+        loss = logprob.mean()
         return loss, shift_logits.reshape(ranking.shape[0], ranking.shape[1], -1)
